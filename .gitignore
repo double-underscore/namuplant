@@ -1,4 +1,5 @@
 .idea/
 venv/
-config.ini
 memo.py
+*.ini
+*.csv
