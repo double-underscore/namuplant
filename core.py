@@ -1,8 +1,18 @@
-import requests, os, re, configparser, time, webbrowser, csv, winsound
+import requests
 from bs4 import BeautifulSoup
 from urllib import parse
+import os
+import re
+import configparser
+import time
+import webbrowser
+import csv
+import winsound
+import pyperclip
+import keyboard
+import mouse
 
-# todo 연쇄. 마우스입력. UI
+# todo UI, 대량입력
 
 LIST_FIELD = ['code', 'title', 'find', 'replace', 'option', 'summary']
 LOG_FIELD = ['code', 'title', 'find', 'replace', 'option', 'summary', 'time', 'rev', 'error']
@@ -60,9 +70,9 @@ class Req:  # 로그인이 필요한 작업
         self.s.headers.update({'user-agent': self.ua})
         self.s.get('https://namu.wiki/edit/IMO')
         self.s.cookies.set('umi', self.umi, domain='namu.wiki')
-        soup = ddos_check(self.s.post, self.loginurl, headers=self.headermaker(self.loginurl), cookies=self.s.cookies,
+        soup = ddos_check(self.s.post, self.loginurl, headers=self.make_header(self.loginurl), cookies=self.s.cookies,
                           data=self.logindata)
-        # r = self.s.post(self.loginurl, headers=self.headermaker(self.loginurl), cookies=self.s.cookies, data=self.logindata)
+        # r = self.s.post(self.loginurl, headers=self.make_header(self.loginurl), cookies=self.s.cookies, data=self.logindata)
         if soup.select(
                 'body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right > li > div > div.dropdown-item.user-info > div > div')[
             1].text == 'Member':
@@ -70,54 +80,71 @@ class Req:  # 로그인이 필요한 작업
         else:
             print('login FAILURE')
 
-    def headermaker(self, url):
-        return {'referer': url}
 
     def iterate(self, doc_list, iter_option= 0):
-        for doc_dict in doc_list:
+        n = len(doc_list)
+        i = 0
+        while i < n:
             start_time = time.time()
-            self.edit_post(doc_dict)
-            # 대기
-            if iter_option > 0:
-                end_time = time.time()
-                wait_time = end_time - start_time
-                if wait_time > 0:
-                    time.sleep(wait_time)
+            is_done = self.edit_post(doc_list[i])
+            if is_done:
+                i += 1
+                if iter_option > 0:
+                    end_time = time.time()
+                    wait_time = end_time - start_time
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+            else:
+                self.login() # 리캡챠 발생
+
 
     def edit_post(self, doc_dict):
         # ['code', 'title', 'find', 'replace', 'option', 'summary', ///// 'time', 'rev', 'error']
         # 겟
         doc_url = 'https://namu.wiki/edit/' + doc_dict['code']
-        soup = ddos_check(self.s.get, doc_url, headers=self.headermaker(doc_url), cookies=self.s.cookies)  # 겟
-        maintext = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
+        soup = ddos_check(self.s.get, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies)  # 겟
         baserev = soup.find(attrs={'name': 'baserev'})['value']
-        identifier = soup.find(attrs={'name': 'identifier'})['value']
-        if 'm:' + self.id == identifier:
-            pass
-            # print('yes!') # 아니면 중단
-        # 변경
-        maintext = self.find_replace(maintext, doc_dict['find'], doc_dict['replace'], doc_dict['option'])
-        # 포0
-        soup = ddos_check(self.s.post, doc_url, headers=self.headermaker(doc_url), cookies=self.s.cookies)  # 포0
-        token = soup.find(attrs={'name': 'token'})['value']
-        # 포1
-        multidata = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': maintext,
-                     'log': doc_dict['summary'],
-                     'agree': 'Y'}
-        soup = ddos_check(self.s.post, doc_url, headers=self.headermaker(doc_url), cookies=self.s.cookies,
-                          data=multidata, files={'file': None})  # 포1
-        # 오류메시지
-        alert = soup.select('.alert-danger')
-        if alert:  # 편집기 오류 메시지
-            winsound.Beep(500, 50)
-            error_log = alert[0].strong.next_sibling.strip()
-        else:  # 성공
-            error_log = ''
+        if is_over_perm(soup):
+            error_log = '편집 권한이 없습니다.'
+        elif is_not_exist(soup):
+            error_log = '문서가 존재하지 않습니다.'
+        else:
+            maintext = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
+            identifier = soup.find(attrs={'name': 'identifier'})['value']
+            if 'm:' + self.id == identifier:
+                pass
+                # print('yes!') # 아니면 중단
+            # 변경
+            maintext = self.find_replace(maintext, doc_dict['find'], doc_dict['replace'], doc_dict['option'])
+            # 포0
+            soup = ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies)  # 포0
+            if is_captcha(soup):
+                return False
+            else:
+                token = soup.find(attrs={'name': 'token'})['value']
+                # 포1
+                multidata = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': maintext,
+                             'log': doc_dict['summary'], 'agree': 'Y'}
+                soup = ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies,
+                                  data=multidata, files={'file': None})  # 포1
+                # 오류메시지
+                alert = soup.select('.alert-danger')
+                if alert:  # 편집기 오류 메시지
+                    winsound.Beep(500, 50)
+                    error_log = alert[0].strong.next_sibling.strip()
+                else:  # 성공
+                    print('EDIT success')
+                    error_log = ''
         # 로그 기록
         doc_dict['time'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
         doc_dict['rev'] = baserev
         doc_dict['error'] = error_log
         self.append_log(doc_dict)
+        return True # 재시도 필요 없음
+
+    @staticmethod
+    def make_header(url):
+        return {'referer': url}
 
     @staticmethod
     def find_replace(text, text_find, text_replace, option):
@@ -125,16 +152,16 @@ class Req:  # 로그인이 필요한 작업
             return text.replace(text_find, text_replace)
         elif option == 1:  # 정규식
             return re.sub(text_find, text_replace, text)
-        elif option == 2:  # 추가하기
-            pass
+        elif option == 2:  # 맨 뒤에 추가하기
+            return text + '\n' + text_replace
         elif option == 9:  # 테스트
-            return text + '플러스'
+            return text
 
     @staticmethod
     def append_log(log_dict):
         with open('edit_log.csv', 'a', encoding='utf-8', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, LOG_FIELD)  # ['code', 'title', 'find', 'replace', 'option', 'summary', 'time', 'rev', 'error']
-            writer.writerow({'code': log_dict[''], 'title': log_dict['title'], 'find': log_dict['find'],
+            writer.writerow({'code': log_dict['code'], 'title': log_dict['title'], 'find': log_dict['find'],
                              'replace': log_dict['replace'], 'option': log_dict['option'], 'summary': log_dict['summary'],
                              'time': log_dict['time'], 'rev': log_dict['rev'], 'error': log_dict['error']})
 
@@ -147,7 +174,7 @@ def is_captcha(soup):
         return False
 
 
-def is_perm(soup):
+def is_over_perm(soup):
     element = soup.select(
         'body > div.content-wrapper > article > div.alert.alert-danger.alert-dismissible.fade.in.edit-alert')
     if element:
@@ -156,7 +183,7 @@ def is_perm(soup):
         return False
 
 
-def is_exist(soup):
+def is_not_exist(soup):
     element = soup.select(
         '.wiki-inner-content > p')
     if element:
@@ -229,6 +256,15 @@ def append_list(code_list):
             writer = csv.DictWriter(csvfile, LIST_FIELD)  # ['code', 'title', 'find', 'replace', 'option', 'summary']
             writer.writerow({'code': doc_code, 'title': parse.unquote(doc_code)})
 
+def read_list(): #csv 읽기 & 입력값 첨가
+    list = []
+    with open('doc_list.csv', 'r', encoding='utf-8', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            dict_row = dict(row)
+            dict_row['option'] = int(dict_row['option'])
+            list.append(dict_row)
+    return list
 
 def deduplication(input):
     return list(set(input))
@@ -240,12 +276,6 @@ def do_edit_post():
     ttt.edit_post(
         {'code': '%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EC%97%B0%EC%8A%B5%EC%9E%A5', 'find': '연습연', 'replace': 'test',
          'option': 9, 'summary': ''})
-
-
-def do_get_cat():
-    aaa = input('분류 가져올 거 코드')
-    if aaa:
-        get_cat(aaa)
 
 
 def check_setting():
@@ -262,13 +292,64 @@ def check_setting():
         with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csvfile:
             csv.DictWriter(csvfile, LOG_FIELD).writeheader()
 
+
+def get_click():
+    is_ctrl = keyboard.is_pressed('ctrl')
+    if is_ctrl:
+        pyperclip.copy('')
+        keyboard.block_key('ctrl')
+        keyboard.release('ctrl')
+        time.sleep(0.03)
+        keyboard.send('e')
+        time.sleep(0.01)
+        pasted_url = pyperclip.paste()
+        if pasted_url:
+            keyboard.unblock_key('ctrl')
+            code = get_code(pasted_url)
+            if code:
+                # append_list([code])
+                get_xref(code)
+            else:
+                winsound.Beep(500, 50)
+        else:
+            keyboard.send('esc')
+            time.sleep(0.02)
+            keyboard.unblock_key('ctrl')
+            winsound.Beep(500, 50)
+
+def get_code(url):
+    if url.find('https://namu.wiki/') >= 0:
+        search = re.search('https://namu\.wiki/\w+/(.*?)($|#|\?)', url).group(1)
+        if search:
+            return search
+        else:
+            return False
+    else:
+        return False
+
+
 if __name__ == '__main__':
     check_setting()
-    startt = time.time()
-    somereq = Req()
-    somereq.test()
-    # do_edit_post()
-    # do_get_xref()
-    # do_get_cat()
-    endt = time.time()
-    print(endt - startt)
+    mouse.on_right_click(get_click) ###
+
+    # test_find = input('뭘 찾아서')
+    # test_find = ''
+    # test_replace = input('뭘 바꾸고')
+    # test_replace = 'abcdefg'
+    # test_option = input('어떻게')
+    # test_option = 2
+    # test_summary = ''
+    # if test_option:
+    # '''
+    start_t = time.time()
+
+    test_req = Req()
+    test_req.login()
+    test_req.iterate(read_list())
+        # do_edit_post()
+        # do_get_xref()
+        # get_cat(test_code)
+
+    end_t = time.time()
+    print(end_t - start_t)
+    # '''
