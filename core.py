@@ -325,7 +325,7 @@ class MainWindow(QMainWindow):
         self.initUI()
 
     def initUI(self):
-        self.setStyleSheet('font: 11pt \'맑은 고딕\'')
+        self.setStyleSheet('font: 10pt \'D2Coding\'')
         # self.setfont(QFont('Segoe UI', 10))
         main_widget = MainWidget()
         self.setCentralWidget(main_widget)
@@ -338,96 +338,195 @@ class MainWindow(QMainWindow):
         # action_exit.tri
         # action_exit.triggered.connect(qApp.quit)
 
-
         menu_bar = self.menuBar()
         menu_bar.setNativeMenuBar(False)
         menu_file = menu_bar.addMenu('&File')
-
-        # self.
         self.show()
 
 
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
+
         self.initUI()
 
     def initUI(self):
-
+        
+        # label
         self.main_label = QLabel('Actinidia v 0.01')
         self.main_label.setAlignment(Qt.AlignCenter)
+        self.main_label.setStyleSheet('font: 11pt \'D2Coding\'')
+        # QDial().setValue()
 
-        self.main_table = QTableWidget()
-        self.main_table.setStyleSheet('font: 10pt \'D2Coding\'')
-        self.main_table.setColumnCount(7)
-        self.main_table.setHorizontalHeaderLabels(['코드', '제목', '#', '찾기', '바꾸기', '요약', '비고'])
-        # self.main_table.verticalHeader().setVisible(False)
-        self.main_table.setAlternatingRowColors(True)
-        # main_table.resizeColumnsToContents()
-        self.main_table.setGridStyle(Qt.DotLine)
-        self.main_table.hideColumn(0)
-        self.set_main_table_data()
+        self.tabs = QTabWidget()
+        tab_a = TabMacro()
+        tab_b = TabMicro()
+        tab_a.sig_test.connect(self.set_main_label)
+        self.tabs.addTab(tab_a, '    Macro    ')
+        self.tabs.addTab(tab_b, '    Micro    ')
 
-        self.text_find = QTextEdit()
-        self.text_find.setAcceptRichText(False)
-        # text_find.sizePolicy()
+        box_v = QVBoxLayout()
+        box_v.addWidget(self.main_label)
+        box_v.addWidget(self.tabs)
+        self.setLayout(box_v)
+
+    @pyqtSlot(str)
+    def set_main_label(self, t):
+        self.main_label.setText(t)
 
 
-        self.text_replace = QTextEdit()
-        self.text_replace.setAcceptRichText(False)
-        self.text_summary = QLineEdit()
+class TabMacro(QWidget):
+    sig_test = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+
+    def initUI(self):
+        # self.setStyleSheet('background-color: #f0f0f0')
+        # table doc
+        self.table_doc = QTableWidget()
+        self.table_doc.setColumnCount(2)
+        self.table_doc.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
+        # self.table_doc.horizontalHeader().setVisible(False)
+        self.table_doc.horizontalScrollBar().setVisible(True)
+        self.table_doc.setAlternatingRowColors(True)
+        self.table_doc.setGridStyle(Qt.DotLine)
+        self.table_doc.hideColumn(0)
+        self.set_table_doc_data()
+        #textbrowser
+        self.text_editor = QPlainTextEdit()
+        self.text_editor.setDisabled(True)
+
+        self.combo_opt1 = QComboBox()
+        self.combo_opt1.addItems(['모두', '복구', '요약'])
+        self.combo_opt2 = QComboBox()
+        self.combo_opt2.addItems(['찾기_일반', '찾기_정규', '바꾸기', '넣기_앞', '넣기_뒤'])
+        self.line_input = QLineEdit()
+
+        self.box_input = QHBoxLayout()
+        self.box_input.addWidget(self.combo_opt1)
+        self.box_input.addWidget(self.combo_opt2)
+        self.box_input.addWidget(self.line_input)
+
+
+        # table edit
+        self.table_edit = QTableWidget(2, 4)
+        self.table_edit.setHorizontalHeaderLabels(['순', '#', '##', '내용'])
+        self.table_edit.verticalHeader().setVisible(False)
+        self.table_edit.setAlternatingRowColors(True)
+        self.table_edit.setGridStyle(Qt.DotLine)
+        # self.table_edit.setAutoFillBackground(True)
+        self.table_edit.resizeRowsToContents()
+        self.set_table_edit_data()
+        # self.table_edit.sizePolicy().setVerticalStretch(7)
+
+
+
+        # combo speed
         self.combo_speed = QComboBox(self)
         self.combo_speed.setStyleSheet('background-color: rgb(190, 190, 190);'
-                                  'color: black;'
-                                  'padding-left: 10px;'
-                                  'padding-right: 30px;'
-                                  'border-style: solid;'
-                                  'border-width: 0px')
+                                       'color: black;'
+                                       'padding-left: 10px;'
+                                       'padding-right: 30px;'
+                                       'border-style: solid;'
+                                       'border-width: 0px')
         self.combo_speed.addItem('고속')
         self.combo_speed.addItem('저속')
+
         self.btn_do = QPushButton('시작', self)
+        # self.btn_do.clicked().connect(self.table_edit_add_new_row)
+
         self.btn_pause = QPushButton('정지', self)
 
+        self.container_input = QWidget()
+        # self.container_input.setStyleSheet('background-color: #f0f0f0')
+        self.container_input.setLayout(self.box_input)
+
+        self.split_v = QSplitter(Qt.Vertical)
+        self.split_v.addWidget(self.text_editor)
+        self.split_v.addWidget(self.container_input)
+        self.split_v.addWidget(self.table_edit)
+        self.split_v.setStretchFactor(0, 4)
+        self.split_v.setStretchFactor(1, 1)
+        self.split_v.setStretchFactor(2, 12)
+
+        self.split_h = QSplitter()
+        self.split_h.addWidget(self.table_doc)
+        self.split_h.addWidget(self.split_v)
+        self.split_h.setStretchFactor(0, 2)
+        self.split_h.setStretchFactor(1, 3)
+
+
         grid = QGridLayout()
-
+        grid.addWidget(self.split_h, 0, 0, 1, 6)
+        grid.addWidget(self.combo_speed, 1, 0, 1, 1)
+        grid.addWidget(self.btn_do, 1, 2, 1, 2)
+        grid.addWidget(self.btn_pause, 1, 5, 1, 1)
+        grid.setRowStretch(0, 20)
+        grid.setRowStretch(1, 1)
+        # grid.setRowMinimumHeight(1, 250)
         self.setLayout(grid)
-        grid.addWidget(self.main_label, 0, 0, 1, 3)
-        grid.addWidget(self.main_table, 1, 0, 1, 3)
-        grid.addWidget(self.text_find, 2, 0, 1, 3)
-        grid.addWidget(self.text_replace, 3, 0, 1, 3)
-        grid.addWidget(self.text_summary, 4, 0, 1, 3)
-        grid.addWidget(self.combo_speed, 5, 0, 1, 1)
-        grid.addWidget(self.btn_do, 5, 1, 1, 1)
-        grid.addWidget(self.btn_pause, 5, 2, 1, 1)
-        grid.setRowStretch(0, 0)
-        grid.setRowStretch(1, 8)
-        grid.setRowStretch(2, 2)
-        grid.setRowStretch(3, 2)
-        grid.setRowStretch(4, 1)
-        grid.setRowStretch(5, 1)
-        grid.setRowMinimumHeight(1, 250)
 
-    def set_main_table_data(self):
+
+    def set_table_doc_data(self):
         start_time = time.time()
         doc_list = read_list()
         doc_num = len(doc_list)
-        self.main_table.setRowCount(doc_num)
+        self.table_doc.setRowCount(doc_num)
         for i in range(doc_num):
-            self.main_table.setItem(i, 0, QTableWidgetItem(doc_list[i]['code']))
-            self.main_table.setItem(i, 1, QTableWidgetItem(doc_list[i]['title']))
-            self.main_table.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
-            self.main_table.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
-            self.main_table.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
-            self.main_table.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
-            # self.main_table.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
-        # self.main_table.set
-        self.main_table.resizeColumnToContents(1)
-        self.main_table.resizeRowsToContents()
-        # self.main_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # self.main_table.setColumnWidth()
+            self.table_doc.setItem(i, 0, QTableWidgetItem(doc_list[i]['code']))
+            self.table_doc.setItem(i, 1, QTableWidgetItem(doc_list[i]['title']))
+            # self.table_doc.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
+            # self.table_doc.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
+            # self.table_doc.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
+            # self.table_doc.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
+            # self.table_doc.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
+        # self.table_doc.set
+        self.table_doc.resizeColumnToContents(1)
+        self.table_doc.resizeRowsToContents()
+        self.table_doc.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        # self.table_doc.setColumnWidth()
         end_time = time.time()
         loading = end_time - start_time
-        print(f'총 {loading}초 {doc_num}개 문서\n문서당 {loading/doc_num}초')
+        print(f'총 {loading}초 {doc_num}개 문서\n문서당 {loading / doc_num}초')
+        print(self.table_doc.rowCount())
+
+    def set_table_edit_data(self):
+
+
+        self.table_edit.setItem(0, 0, QTableWidgetItem('1'))
+        # self.table_edit.setCellWidget(0, 1, self.combo_opt1)
+        # self.table_edit.setCellWidget(0, 2, self.combo_opt2)
+        self.table_edit.resizeColumnsToContents()
+        self.table_edit.cellChanged.connect(self.table_edit_add_new_row)
+        # self.table_edit.cellChanged(self.table_edit.rowCount() - 1, 3).connect(self.table_edit_add_new_row())
+
+    @pyqtSlot()
+    def btn_do_do(self):
+        pass
+
+    @pyqtSlot(int, int)
+    def table_edit_add_new_row(self, r, c):
+        rows_total = self.table_edit.rowCount()
+        if r == rows_total - 1:
+            self.table_edit.insertRow(rows_total)
+        self.sig_test.emit('동동이')
+        # self.table_edit.setItem()
+
+
+        # self.table_edit.item
+
+
+class TabMicro(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        pass
+
 
 if __name__ == '__main__':
     check_setting()
