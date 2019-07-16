@@ -11,11 +11,14 @@ import winsound
 import pyperclip
 import keyboard
 import mouse
-
+import sys
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtCore import *
 # todo UI, 대량입력
 
-LIST_FIELD = ['code', 'title', 'find', 'replace', 'option', 'summary']
-LOG_FIELD = ['code', 'title', 'find', 'replace', 'option', 'summary', 'time', 'rev', 'error']
+LIST_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary']
+LOG_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary', 'time', 'rev', 'error']
 
 def ddos_check(funcs, url, **kwargs):
     while True:
@@ -35,14 +38,6 @@ def ddos_check(funcs, url, **kwargs):
             continue
         else:
             return soup
-
-
-class Win:
-    def __init__(self):
-        pass
-
-    def UI(self):
-        pass
 
 
 class Req:  # 로그인이 필요한 작업
@@ -74,8 +69,8 @@ class Req:  # 로그인이 필요한 작업
                           data=self.logindata)
         # r = self.s.post(self.loginurl, headers=self.make_header(self.loginurl), cookies=self.s.cookies, data=self.logindata)
         if soup.select(
-                'body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right > li > div > div.dropdown-item.user-info > div > div')[
-            1].text == 'Member':
+                'body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right > li > div > '
+                'div.dropdown-item.user-info > div > div')[1].text == 'Member':
             print('login SUCCESS')
         else:
             print('login FAILURE')
@@ -99,7 +94,7 @@ class Req:  # 로그인이 필요한 작업
 
 
     def edit_post(self, doc_dict):
-        # ['code', 'title', 'find', 'replace', 'option', 'summary', ///// 'time', 'rev', 'error']
+        # ['code', 'title', 'option', 'find', 'replace', summary', ///// 'time', 'rev', 'error']
         # 겟
         doc_url = 'https://namu.wiki/edit/' + doc_dict['code']
         soup = ddos_check(self.s.get, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies)  # 겟
@@ -115,7 +110,7 @@ class Req:  # 로그인이 필요한 작업
                 pass
                 # print('yes!') # 아니면 중단
             # 변경
-            maintext = self.find_replace(maintext, doc_dict['find'], doc_dict['replace'], doc_dict['option'])
+            maintext = self.find_replace(maintext, doc_dict['option'], doc_dict['find'], doc_dict['replace'])
             # 포0
             soup = ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies)  # 포0
             if is_captcha(soup):
@@ -147,7 +142,7 @@ class Req:  # 로그인이 필요한 작업
         return {'referer': url}
 
     @staticmethod
-    def find_replace(text, text_find, text_replace, option):
+    def find_replace(text, option, text_find, text_replace):
         if option == 0:  # 일반 찾아바꾸기
             return text.replace(text_find, text_replace)
         elif option == 1:  # 정규식
@@ -160,9 +155,9 @@ class Req:  # 로그인이 필요한 작업
     @staticmethod
     def append_log(log_dict):
         with open('edit_log.csv', 'a', encoding='utf-8', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, LOG_FIELD)  # ['code', 'title', 'find', 'replace', 'option', 'summary', 'time', 'rev', 'error']
-            writer.writerow({'code': log_dict['code'], 'title': log_dict['title'], 'find': log_dict['find'],
-                             'replace': log_dict['replace'], 'option': log_dict['option'], 'summary': log_dict['summary'],
+            writer = csv.DictWriter(csvfile, LOG_FIELD)
+            writer.writerow({'code': log_dict['code'], 'title': log_dict['title'], 'option': log_dict['option'],
+                             'find': log_dict['find'], 'replace': log_dict['replace'], 'summary': log_dict['summary'],
                              'time': log_dict['time'], 'rev': log_dict['rev'], 'error': log_dict['error']})
 
 
@@ -253,7 +248,7 @@ def get_cat(doc_code):
 def append_list(code_list):
     for doc_code in code_list:
         with open('doc_list.csv', 'a', encoding='utf-8', newline='') as csvfile:
-            writer = csv.DictWriter(csvfile, LIST_FIELD)  # ['code', 'title', 'find', 'replace', 'option', 'summary']
+            writer = csv.DictWriter(csvfile, LIST_FIELD) # ['code', 'title', 'option', 'find', 'replace', 'summary']
             writer.writerow({'code': doc_code, 'title': parse.unquote(doc_code)})
 
 def read_list(): #csv 읽기 & 입력값 첨가
@@ -262,20 +257,14 @@ def read_list(): #csv 읽기 & 입력값 첨가
         reader = csv.DictReader(csvfile)
         for row in reader:
             dict_row = dict(row)
-            dict_row['option'] = int(dict_row['option'])
+            if dict_row['option']:
+                dict_row['option'] = int(dict_row['option'])
             list.append(dict_row)
     return list
 
+
 def deduplication(input):
     return list(set(input))
-
-
-def do_edit_post():
-    ttt = Req()
-    ttt.login()
-    ttt.edit_post(
-        {'code': '%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EC%97%B0%EC%8A%B5%EC%9E%A5', 'find': '연습연', 'replace': 'test',
-         'option': 9, 'summary': ''})
 
 
 def check_setting():
@@ -291,6 +280,7 @@ def check_setting():
     if not os.path.isfile('edit_log.csv'):  # 최초 생성
         with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csvfile:
             csv.DictWriter(csvfile, LOG_FIELD).writeheader()
+            # ['code', 'title', 'option', 'find', 'replace', 'summary', 'time', 'rev', 'error']
 
 
 def get_click():
@@ -317,6 +307,7 @@ def get_click():
             keyboard.unblock_key('ctrl')
             winsound.Beep(500, 50)
 
+
 def get_code(url):
     if url.find('https://namu.wiki/') >= 0:
         search = re.search('https://namu\.wiki/\w+/(.*?)($|#|\?)', url).group(1)
@@ -327,6 +318,116 @@ def get_code(url):
     else:
         return False
 
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setStyleSheet('font: 11pt \'맑은 고딕\'')
+        # self.setfont(QFont('Segoe UI', 10))
+        main_widget = MainWidget()
+        self.setCentralWidget(main_widget)
+        self.setGeometry(960, 30, 960, 1020)  # X Y 너비 높이
+        self.setWindowTitle('Actinidia')
+        self.setWindowIcon(QIcon('icon.png'))
+        # self.statusBar().showMessage('Ready')
+
+        # action_exit = QAction('Exit', self)
+        # action_exit.tri
+        # action_exit.triggered.connect(qApp.quit)
+
+
+        menu_bar = self.menuBar()
+        menu_bar.setNativeMenuBar(False)
+        menu_file = menu_bar.addMenu('&File')
+
+        # self.
+        self.show()
+
+
+class MainWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+
+        self.main_label = QLabel('Actinidia v 0.01')
+        self.main_label.setAlignment(Qt.AlignCenter)
+
+        self.main_table = QTableWidget()
+        self.main_table.setStyleSheet('font: 10pt \'D2Coding\'')
+        self.main_table.setColumnCount(7)
+        self.main_table.setHorizontalHeaderLabels(['코드', '제목', '#', '찾기', '바꾸기', '요약', '비고'])
+        # self.main_table.verticalHeader().setVisible(False)
+        self.main_table.setAlternatingRowColors(True)
+        # main_table.resizeColumnsToContents()
+        self.main_table.setGridStyle(Qt.DotLine)
+        self.main_table.hideColumn(0)
+        self.set_main_table_data()
+
+        self.text_find = QTextEdit()
+        self.text_find.setAcceptRichText(False)
+        # text_find.sizePolicy()
+
+
+        self.text_replace = QTextEdit()
+        self.text_replace.setAcceptRichText(False)
+        self.text_summary = QLineEdit()
+        self.combo_speed = QComboBox(self)
+        self.combo_speed.setStyleSheet('background-color: rgb(190, 190, 190);'
+                                  'color: black;'
+                                  'padding-left: 10px;'
+                                  'padding-right: 30px;'
+                                  'border-style: solid;'
+                                  'border-width: 0px')
+        self.combo_speed.addItem('고속')
+        self.combo_speed.addItem('저속')
+        self.btn_do = QPushButton('시작', self)
+        self.btn_pause = QPushButton('정지', self)
+
+        grid = QGridLayout()
+
+        self.setLayout(grid)
+        grid.addWidget(self.main_label, 0, 0, 1, 3)
+        grid.addWidget(self.main_table, 1, 0, 1, 3)
+        grid.addWidget(self.text_find, 2, 0, 1, 3)
+        grid.addWidget(self.text_replace, 3, 0, 1, 3)
+        grid.addWidget(self.text_summary, 4, 0, 1, 3)
+        grid.addWidget(self.combo_speed, 5, 0, 1, 1)
+        grid.addWidget(self.btn_do, 5, 1, 1, 1)
+        grid.addWidget(self.btn_pause, 5, 2, 1, 1)
+        grid.setRowStretch(0, 0)
+        grid.setRowStretch(1, 8)
+        grid.setRowStretch(2, 2)
+        grid.setRowStretch(3, 2)
+        grid.setRowStretch(4, 1)
+        grid.setRowStretch(5, 1)
+        grid.setRowMinimumHeight(1, 250)
+
+    def set_main_table_data(self):
+        start_time = time.time()
+        doc_list = read_list()
+        doc_num = len(doc_list)
+        self.main_table.setRowCount(doc_num)
+        for i in range(doc_num):
+            self.main_table.setItem(i, 0, QTableWidgetItem(doc_list[i]['code']))
+            self.main_table.setItem(i, 1, QTableWidgetItem(doc_list[i]['title']))
+            self.main_table.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
+            self.main_table.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
+            self.main_table.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
+            self.main_table.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
+            # self.main_table.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
+        # self.main_table.set
+        self.main_table.resizeColumnToContents(1)
+        self.main_table.resizeRowsToContents()
+        # self.main_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        # self.main_table.setColumnWidth()
+        end_time = time.time()
+        loading = end_time - start_time
+        print(f'총 {loading}초 {doc_num}개 문서\n문서당 {loading/doc_num}초')
 
 if __name__ == '__main__':
     check_setting()
@@ -340,7 +441,8 @@ if __name__ == '__main__':
     # test_option = 2
     # test_summary = ''
     # if test_option:
-    # '''
+
+    '''
     start_t = time.time()
 
     test_req = Req()
@@ -352,4 +454,7 @@ if __name__ == '__main__':
 
     end_t = time.time()
     print(end_t - start_t)
-    # '''
+    '''
+    app = QApplication(sys.argv)
+    win = MainWindow()
+    sys.exit(app.exec_())

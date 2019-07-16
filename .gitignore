@@ -1,5 +1,5 @@
 .idea/
 venv/
-memo.py
+memo*.py
 *.ini
 *.csv
