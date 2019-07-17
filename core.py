@@ -19,6 +19,11 @@ from PyQt5.QtCore import *
 
 LIST_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary']
 LOG_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary', 'time', 'rev', 'error']
+COMBO_1 = ['모두', '복구', '요약']
+COMBO_2 = ['찾기', '바꾸기', '넣기']
+COMBO_3_1 = ['일반', '정규식']
+COMBO_3_2 = []
+COMBO_3_3 = ['맨 앞', '맨 뒤']
 
 def ddos_check(funcs, url, **kwargs):
     while True:
@@ -325,7 +330,7 @@ class MainWindow(QMainWindow):
         self.initUI()
 
     def initUI(self):
-        self.setStyleSheet('font: 10pt \'D2Coding\'')
+        self.setStyleSheet('font: 10pt \'Segoe UI\'')
         # self.setfont(QFont('Segoe UI', 10))
         main_widget = MainWidget()
         self.setCentralWidget(main_widget)
@@ -355,7 +360,7 @@ class MainWidget(QWidget):
         # label
         self.main_label = QLabel('Actinidia v 0.01')
         self.main_label.setAlignment(Qt.AlignCenter)
-        self.main_label.setStyleSheet('font: 11pt \'D2Coding\'')
+        self.main_label.setStyleSheet('font: 11pt')
         # QDial().setValue()
 
         self.tabs = QTabWidget()
@@ -399,21 +404,27 @@ class TabMacro(QWidget):
         self.text_editor = QPlainTextEdit()
         self.text_editor.setDisabled(True)
 
+        self.spin_1 = QSpinBox()
+        self.spin_1.setMinimum(1)
+        self.spin_1.setStyleSheet('font: 11pt')
         self.combo_opt1 = QComboBox()
-        self.combo_opt1.addItems(['모두', '복구', '요약'])
+        self.combo_opt1.addItems(COMBO_1)
+        self.combo_opt1.setStyleSheet('font: 11pt')
         self.combo_opt2 = QComboBox()
-        self.combo_opt2.addItems(['찾기_일반', '찾기_정규', '바꾸기', '넣기_앞', '넣기_뒤'])
+        self.combo_opt2.addItems(COMBO_2)
+        self.combo_opt2.setStyleSheet('font: 11pt')
+        self.combo_opt3 = QComboBox()
+        self.combo_opt3.addItems(COMBO_3_1)
+        self.combo_opt3.setStyleSheet('font: 11pt')
+        self.combo_opt1.currentIndexChanged.connect(self.combo_opt1_change)
+        self.combo_opt2.currentIndexChanged.connect(self.combo_opt2_change)
         self.line_input = QLineEdit()
-
-        self.box_input = QHBoxLayout()
-        self.box_input.addWidget(self.combo_opt1)
-        self.box_input.addWidget(self.combo_opt2)
-        self.box_input.addWidget(self.line_input)
+        self.line_input.setStyleSheet('font: 11pt')
 
 
         # table edit
-        self.table_edit = QTableWidget(2, 4)
-        self.table_edit.setHorizontalHeaderLabels(['순', '#', '##', '내용'])
+        self.table_edit = QTableWidget(0, 5)
+        self.table_edit.setHorizontalHeaderLabels(['순', '1', '2', '3', '내용'])
         self.table_edit.verticalHeader().setVisible(False)
         self.table_edit.setAlternatingRowColors(True)
         self.table_edit.setGridStyle(Qt.DotLine)
@@ -440,17 +451,14 @@ class TabMacro(QWidget):
 
         self.btn_pause = QPushButton('정지', self)
 
-        self.container_input = QWidget()
         # self.container_input.setStyleSheet('background-color: #f0f0f0')
-        self.container_input.setLayout(self.box_input)
+
 
         self.split_v = QSplitter(Qt.Vertical)
         self.split_v.addWidget(self.text_editor)
-        self.split_v.addWidget(self.container_input)
         self.split_v.addWidget(self.table_edit)
         self.split_v.setStretchFactor(0, 4)
-        self.split_v.setStretchFactor(1, 1)
-        self.split_v.setStretchFactor(2, 12)
+        self.split_v.setStretchFactor(1, 12)
 
         self.split_h = QSplitter()
         self.split_h.addWidget(self.table_doc)
@@ -458,16 +466,32 @@ class TabMacro(QWidget):
         self.split_h.setStretchFactor(0, 2)
         self.split_h.setStretchFactor(1, 3)
 
+        box_h1 = QHBoxLayout()
+        box_h2 = QHBoxLayout()
+        box_v = QVBoxLayout()
 
-        grid = QGridLayout()
-        grid.addWidget(self.split_h, 0, 0, 1, 6)
-        grid.addWidget(self.combo_speed, 1, 0, 1, 1)
-        grid.addWidget(self.btn_do, 1, 2, 1, 2)
-        grid.addWidget(self.btn_pause, 1, 5, 1, 1)
-        grid.setRowStretch(0, 20)
-        grid.setRowStretch(1, 1)
-        # grid.setRowMinimumHeight(1, 250)
-        self.setLayout(grid)
+        # box_h1.addStretch(2)
+        box_h1.addWidget(self.spin_1)
+        box_h1.addWidget(self.combo_opt1)
+        box_h1.addWidget(self.combo_opt2)
+        box_h1.addWidget(self.combo_opt3)
+        box_h1.addWidget(self.line_input)
+        box_h1.setStretchFactor(self.spin_1, 1)
+        box_h1.setStretchFactor(self.combo_opt1, 1)
+        box_h1.setStretchFactor(self.combo_opt2, 1)
+        box_h1.setStretchFactor(self.combo_opt3, 1)
+        box_h1.setStretchFactor(self.line_input, 6)
+
+        box_h2.addWidget(self.combo_speed)
+        box_h2.addStretch(3)
+        box_h2.addWidget(self.btn_do)
+        box_h2.addWidget(self.btn_pause)
+
+        box_v.addWidget(self.split_h)
+        box_v.addLayout(box_h1)
+        box_v.addLayout(box_h2)
+
+        self.setLayout(box_v)
 
 
     def set_table_doc_data(self):
@@ -494,21 +518,81 @@ class TabMacro(QWidget):
         print(self.table_doc.rowCount())
 
     def set_table_edit_data(self):
-
-
-        self.table_edit.setItem(0, 0, QTableWidgetItem('1'))
-        # self.table_edit.setCellWidget(0, 1, self.combo_opt1)
-        # self.table_edit.setCellWidget(0, 2, self.combo_opt2)
+        self.line_input.returnPressed.connect(self.table_edit_add)
+        self.table_edit.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table_edit.resizeColumnsToContents()
-        self.table_edit.cellChanged.connect(self.table_edit_add_new_row)
-        # self.table_edit.cellChanged(self.table_edit.rowCount() - 1, 3).connect(self.table_edit_add_new_row())
+        # self.table_edit.cellChanged.connect(self.table_edit_add_new_row)
 
     @pyqtSlot()
-    def btn_do_do(self):
-        pass
+    def table_edit_add(self):
+        # 값 추출
+        order = self.spin_1.value()
+        opt1 = self.combo_opt1.currentIndex()
+        opt2 = self.combo_opt2.currentIndex()
+        opt3 = self.combo_opt3.currentIndex()
+        text = self.line_input.text()
+        rows_total = self.table_edit.rowCount()
+
+        item0 = str(order)
+        item1 = COMBO_1[opt1]
+        if self.combo_opt2.isEnabled():
+            item2 = COMBO_2[opt2]
+        else:
+            item2 = ''
+        if self.combo_opt3.isEnabled():
+            if opt2 == 0:
+                item3 = COMBO_3_1[opt3]
+            elif opt2 == 2:
+                item3 = COMBO_3_3[opt3]
+        else:
+            item3 = ''
+
+
+        # 값 입력
+        self.table_edit.setRowCount(rows_total + 1)
+        self.table_edit.setItem(rows_total, 0, QTableWidgetItem(item0))
+        self.table_edit.setItem(rows_total, 1, QTableWidgetItem(item1))
+        self.table_edit.setItem(rows_total, 2, QTableWidgetItem(item2))
+        self.table_edit.setItem(rows_total, 3, QTableWidgetItem(item3))
+        self.table_edit.setItem(rows_total, 4, QTableWidgetItem(text))
+        self.table_edit.resizeColumnsToContents()
+        self.table_edit.resizeRowsToContents()
+        # 입력 후
+        self.line_input.clear()
+        if opt1 == 0:
+            if opt2 == 1: # 바꾸기
+                self.combo_opt2.setCurrentIndex(0)
+            elif opt2 == 0:  # 찾기
+                self.combo_opt2.setCurrentIndex(1)
+
+
+    @pyqtSlot(int)
+    def combo_opt1_change(self, i):
+        if i == 0: # 모두
+            self.combo_opt2.setEnabled(True)
+            self.combo_opt3.setEnabled(True)
+        elif i == 1 or 2: # 되돌리기, 요약
+            self.combo_opt2.setEnabled(False)
+            self.combo_opt3.setEnabled(False)
+
+    @pyqtSlot(int)
+    def combo_opt2_change(self, i):
+        opt3 = self.combo_opt3.currentText()
+        if i == 0 or i == 1:
+            if opt3 in COMBO_3_3:
+                self.combo_opt3.clear()
+                self.combo_opt3.addItems(COMBO_3_1)
+            if i == 0:  # 찾
+                self.combo_opt3.setEnabled(True)
+            elif i == 1:  # 바
+                self.combo_opt3.setEnabled(False)
+        elif i == 2:  # 넣기
+            self.combo_opt3.setEnabled(True)
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(COMBO_3_3)
 
     @pyqtSlot(int, int)
-    def table_edit_add_new_row(self, r, c):
+    def table_edit_add_new_row(self, r, c): # 시그널 슬롯 예시
         rows_total = self.table_edit.rowCount()
         if r == rows_total - 1:
             self.table_edit.insertRow(rows_total)
@@ -525,7 +609,11 @@ class TabMicro(QWidget):
         self.initUI()
 
     def initUI(self):
-        pass
+
+        label_info = QLabel('언젠가 예정')
+        box_v = QVBoxLayout()
+        box_v.addWidget(label_info)
+        self.setLayout(box_v)
 
 
 if __name__ == '__main__':
