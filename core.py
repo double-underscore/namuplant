@@ -13,9 +13,8 @@ import keyboard
 import mouse
 import sys
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtGui import QIcon, QFont, QKeySequence, QDropEvent
 from PyQt5.QtCore import *
-# todo UI, 대량입력
 
 LIST_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary']
 LOG_FIELD = ['code', 'title', 'option', 'find', 'replace', 'summary', 'time', 'rev', 'error']
@@ -24,6 +23,7 @@ COMBO_2 = ['찾기', '바꾸기', '넣기']
 COMBO_3_1 = ['일반', '정규식']
 COMBO_3_2 = []
 COMBO_3_3 = ['맨 앞', '맨 뒤']
+
 
 def ddos_check(funcs, url, **kwargs):
     while True:
@@ -339,14 +339,19 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon('icon.png'))
         # self.statusBar().showMessage('Ready')
 
-        # action_exit = QAction('Exit', self)
-        # action_exit.tri
-        # action_exit.triggered.connect(qApp.quit)
+        test_action = QAction(QIcon('icon.png'), 'aaaa', self)
+        test_action.triggered.connect(self.test)
+        test_action.setShortcut('Ctrl + Q')
 
         menu_bar = self.menuBar()
-        menu_bar.setNativeMenuBar(False)
+        # menu_bar.setNativeMenuBar(False)
         menu_file = menu_bar.addMenu('&File')
+        menu_file.addAction(test_action)
+
         self.show()
+
+    def test(self):
+        print('aaaaaaaa')
 
 
 class MainWidget(QWidget):
@@ -356,7 +361,7 @@ class MainWidget(QWidget):
         self.initUI()
 
     def initUI(self):
-        
+
         # label
         self.main_label = QLabel('Actinidia v 0.01')
         self.main_label.setAlignment(Qt.AlignCenter)
@@ -366,6 +371,7 @@ class MainWidget(QWidget):
         self.tabs = QTabWidget()
         tab_a = TabMacro()
         tab_b = TabMicro()
+        tab_a.sig_test.connect(self.set_main_label)
         tab_a.sig_test.connect(self.set_main_label)
         self.tabs.addTab(tab_a, '    Macro    ')
         self.tabs.addTab(tab_b, '    Micro    ')
@@ -382,28 +388,26 @@ class MainWidget(QWidget):
 
 class TabMacro(QWidget):
     sig_test = pyqtSignal(str)
+    sig_table_doc_main_label = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
         self.initUI()
-
+        # self.keyPressEvent()
 
     def initUI(self):
         # self.setStyleSheet('background-color: #f0f0f0')
         # table doc
-        self.table_doc = QTableWidget()
-        self.table_doc.setColumnCount(2)
-        self.table_doc.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
-        # self.table_doc.horizontalHeader().setVisible(False)
-        self.table_doc.horizontalScrollBar().setVisible(True)
-        self.table_doc.setAlternatingRowColors(True)
-        self.table_doc.setGridStyle(Qt.DotLine)
-        self.table_doc.hideColumn(0)
-        self.set_table_doc_data()
-        #textbrowser
-        self.text_editor = QPlainTextEdit()
-        self.text_editor.setDisabled(True)
+        self.table_doc = TableDoc()
+        self.table_doc.sig_main_label.connect(self.str_to_main)
 
+        #textbrowser
+        self.text_editor = QTextBrowser()
+        self.text_editor.setDisabled(True)
+        # table edit
+        self.table_edit = TableEdit()
+
+        # second to last row
         self.spin_1 = QSpinBox()
         self.spin_1.setMinimum(1)
         self.spin_1.setStyleSheet('font: 11pt')
@@ -420,22 +424,9 @@ class TabMacro(QWidget):
         self.combo_opt2.currentIndexChanged.connect(self.combo_opt2_change)
         self.line_input = QLineEdit()
         self.line_input.setStyleSheet('font: 11pt')
+        self.line_input.returnPressed.connect(self.add_to_edit)
 
-
-        # table edit
-        self.table_edit = QTableWidget(0, 5)
-        self.table_edit.setHorizontalHeaderLabels(['순', '1', '2', '3', '내용'])
-        self.table_edit.verticalHeader().setVisible(False)
-        self.table_edit.setAlternatingRowColors(True)
-        self.table_edit.setGridStyle(Qt.DotLine)
-        # self.table_edit.setAutoFillBackground(True)
-        self.table_edit.resizeRowsToContents()
-        self.set_table_edit_data()
-        # self.table_edit.sizePolicy().setVerticalStretch(7)
-
-
-
-        # combo speed
+        # last row
         self.combo_speed = QComboBox(self)
         self.combo_speed.setStyleSheet('background-color: rgb(190, 190, 190);'
                                        'color: black;'
@@ -445,14 +436,9 @@ class TabMacro(QWidget):
                                        'border-width: 0px')
         self.combo_speed.addItem('고속')
         self.combo_speed.addItem('저속')
-
         self.btn_do = QPushButton('시작', self)
         # self.btn_do.clicked().connect(self.table_edit_add_new_row)
-
         self.btn_pause = QPushButton('정지', self)
-
-        # self.container_input.setStyleSheet('background-color: #f0f0f0')
-
 
         self.split_v = QSplitter(Qt.Vertical)
         self.split_v.addWidget(self.text_editor)
@@ -493,79 +479,6 @@ class TabMacro(QWidget):
 
         self.setLayout(box_v)
 
-
-    def set_table_doc_data(self):
-        start_time = time.time()
-        doc_list = read_list()
-        doc_num = len(doc_list)
-        self.table_doc.setRowCount(doc_num)
-        for i in range(doc_num):
-            self.table_doc.setItem(i, 0, QTableWidgetItem(doc_list[i]['code']))
-            self.table_doc.setItem(i, 1, QTableWidgetItem(doc_list[i]['title']))
-            # self.table_doc.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
-            # self.table_doc.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
-            # self.table_doc.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
-            # self.table_doc.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
-            # self.table_doc.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
-        # self.table_doc.set
-        self.table_doc.resizeColumnToContents(1)
-        self.table_doc.resizeRowsToContents()
-        self.table_doc.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # self.table_doc.setColumnWidth()
-        end_time = time.time()
-        loading = end_time - start_time
-        print(f'총 {loading}초 {doc_num}개 문서\n문서당 {loading / doc_num}초')
-        print(self.table_doc.rowCount())
-
-    def set_table_edit_data(self):
-        self.line_input.returnPressed.connect(self.table_edit_add)
-        self.table_edit.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table_edit.resizeColumnsToContents()
-        # self.table_edit.cellChanged.connect(self.table_edit_add_new_row)
-
-    @pyqtSlot()
-    def table_edit_add(self):
-        # 값 추출
-        order = self.spin_1.value()
-        opt1 = self.combo_opt1.currentIndex()
-        opt2 = self.combo_opt2.currentIndex()
-        opt3 = self.combo_opt3.currentIndex()
-        text = self.line_input.text()
-        rows_total = self.table_edit.rowCount()
-
-        item0 = str(order)
-        item1 = COMBO_1[opt1]
-        if self.combo_opt2.isEnabled():
-            item2 = COMBO_2[opt2]
-        else:
-            item2 = ''
-        if self.combo_opt3.isEnabled():
-            if opt2 == 0:
-                item3 = COMBO_3_1[opt3]
-            elif opt2 == 2:
-                item3 = COMBO_3_3[opt3]
-        else:
-            item3 = ''
-
-
-        # 값 입력
-        self.table_edit.setRowCount(rows_total + 1)
-        self.table_edit.setItem(rows_total, 0, QTableWidgetItem(item0))
-        self.table_edit.setItem(rows_total, 1, QTableWidgetItem(item1))
-        self.table_edit.setItem(rows_total, 2, QTableWidgetItem(item2))
-        self.table_edit.setItem(rows_total, 3, QTableWidgetItem(item3))
-        self.table_edit.setItem(rows_total, 4, QTableWidgetItem(text))
-        self.table_edit.resizeColumnsToContents()
-        self.table_edit.resizeRowsToContents()
-        # 입력 후
-        self.line_input.clear()
-        if opt1 == 0:
-            if opt2 == 1: # 바꾸기
-                self.combo_opt2.setCurrentIndex(0)
-            elif opt2 == 0:  # 찾기
-                self.combo_opt2.setCurrentIndex(1)
-
-
     @pyqtSlot(int)
     def combo_opt1_change(self, i):
         if i == 0: # 모두
@@ -596,11 +509,241 @@ class TabMacro(QWidget):
         rows_total = self.table_edit.rowCount()
         if r == rows_total - 1:
             self.table_edit.insertRow(rows_total)
-        self.sig_test.emit('동동이')
+        self.str_to_main('동동이') # sig_test 라는 시그널을 뱉음
         # self.table_edit.setItem()
-
-
         # self.table_edit.item
+
+    @pyqtSlot()
+    def add_to_edit(self):
+        # 값 추출
+        order = self.spin_1.value()
+        opt1 = self.combo_opt1.currentIndex()
+        opt2 = self.combo_opt2.currentIndex()
+        opt3 = self.combo_opt3.currentIndex()
+        text = self.line_input.text()
+        rows_total = self.table_edit.rowCount()
+
+        item0 = QTableWidgetItem(str(order))
+        item1 = QTableWidgetItem(COMBO_1[opt1])
+        if self.combo_opt2.isEnabled():
+            item2 = QTableWidgetItem(COMBO_2[opt2])
+        else:
+            item2 = QTableWidgetItem('')
+        if self.combo_opt3.isEnabled():
+            if opt2 == 0:
+                item3 = QTableWidgetItem(COMBO_3_1[opt3])
+            elif opt2 == 2:
+                item3 = QTableWidgetItem(COMBO_3_3[opt3])
+        else:
+            item3 = QTableWidgetItem('')
+
+        item0.setFlags(item0.flags() ^ Qt.ItemIsEditable) # ^은 빼기 |은 더하기
+        item1.setFlags(item1.flags() ^ Qt.ItemIsEditable)
+        item2.setFlags(item2.flags() ^ Qt.ItemIsEditable)
+        item3.setFlags(item3.flags() ^ Qt.ItemIsEditable)
+
+        # 값 입력
+        self.table_edit.setRowCount(rows_total + 1)
+        self.table_edit.setItem(rows_total, 0, item0)
+        self.table_edit.setItem(rows_total, 1, item1)
+        self.table_edit.setItem(rows_total, 2, item2)
+        self.table_edit.setItem(rows_total, 3, item3)
+        self.table_edit.setItem(rows_total, 4, QTableWidgetItem(text))
+        self.table_edit.resizeColumnsToContents()
+        self.table_edit.resizeRowsToContents()
+        # 입력 후
+        self.line_input.clear()
+        if opt1 == 0:
+            if opt2 == 1: # 바꾸기
+                self.combo_opt2.setCurrentIndex(0)
+            elif opt2 == 0:  # 찾기
+                self.combo_opt2.setCurrentIndex(1)
+
+    @pyqtSlot(str)
+    def str_to_main(self, t):
+        self.sig_test.emit(t)
+
+
+class TableDoc(QTableWidget):
+    sig_main_label = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setColumnCount(3)
+        self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
+        self.horizontalScrollBar().setVisible(True)
+        self.setAlternatingRowColors(True)
+        self.setGridStyle(Qt.DotLine)
+        self.hideColumn(0)
+        self.verticalHeader().setDefaultSectionSize(23)
+        # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        # self.setSortingEnabled(True)
+        self.set_data()
+        self.shortcuts()
+
+    def keyPressEvent(self, e):
+        super().keyPressEvent(e) # 오버라이드하면서 기본 메서드 재활용
+
+        if e.key() == Qt.Key_Return:
+            self.sig_main_label.emit(self.currentItem().text())
+
+        elif e.key() == Qt.Key_Delete: # 지우기
+            self.setUpdatesEnabled(False)
+            col_origin = self.currentColumn()
+            rows_selected = self.rows_selected()
+            if rows_selected:
+                self.rows_delete(rows_selected)
+                aaa = rows_selected[len(rows_selected) - 1] - len(rows_selected)
+                if aaa + 1 == self.rowCount(): # 마지막 줄이면
+                    added = 0
+                else:
+                    added = 1
+                self.setCurrentCell(aaa + added, col_origin)
+            self.setUpdatesEnabled(True)
+
+    def shortcuts(self):
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Up'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self.method_move_up) # 한 칸 위로
+        move_down = QShortcut(QKeySequence('Ctrl+Shift+Down'), self, context=Qt.WidgetShortcut)
+        move_down.activated.connect(self.method_move_down) # 한 칸 아래로
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Left'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self.method_move_top) # 맨 위로
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Right'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self.method_move_bottom) # 맨 아래로
+
+    def method_move_up(self):
+        self.rows_move(1)
+
+    def method_move_down(self):
+        self.rows_move(2)
+
+    def method_move_top(self):
+        self.rows_move(3)
+
+    def method_move_bottom(self):
+        self.rows_move(4)
+
+    def rows_selected(self):
+        rows_list = []
+        col_origin = self.currentColumn()
+        items = self.selectedItems()
+        if items:
+            for i in items:
+                if i.column() == col_origin:
+                    rows_list.append(i.row())
+            rows_list.sort()
+        return rows_list
+
+    def rows_delete(self, rows_list):
+        deleted = 0
+        if rows_list:
+            for r in rows_list:
+                self.removeRow(r - deleted)
+                deleted += 1
+
+    def rows_copy(self, rows_list):
+        # rows_list = self.rows_selected()
+        item = []
+        item_list = []
+        if rows_list:
+            for r in rows_list:
+                for c in range(self.columnCount()):
+                    item.append(self.item(r, c).text())
+                item_list.append(item)
+                item = []
+        return item_list
+
+    def rows_paste(self, copied_list, row_to_paste):
+        copied_list.reverse()
+        for i in range(len(copied_list)):
+            self.insertRow(row_to_paste)
+            for c in range(self.columnCount()):
+                self.setItem(row_to_paste, c, QTableWidgetItem(copied_list[i][c]))
+
+    def rows_move(self, where_to):
+        self.setUpdatesEnabled(False)
+        col_origin = self.currentColumn()
+        rows_selected = self.rows_selected()
+        row_where_to = 0
+        items = self.rows_copy(rows_selected)
+        # 일단 지우고
+        self.rows_delete(rows_selected)
+        # 어디로 가야 하나
+        if where_to == 1: # 한 칸 위로
+            if rows_selected[0] == 0: # 첫 줄이었으면
+                row_where_to = 0
+            else:
+                row_where_to = rows_selected[0] - 1
+        elif where_to == 2: # 한 칸 아래로
+            row_last = rows_selected[len(rows_selected) - 1]
+            if row_last - len(rows_selected) == self.rowCount() - 1: # 마지막 줄이었으면
+                row_where_to = self.rowCount()  # - 1 - deletes['deleted']
+            else:
+                row_where_to = row_last + 2 - len(rows_selected)
+        elif where_to == 3: # 맨 위로
+            row_where_to = 0
+        elif where_to == 4:  # 맨 아래로
+            row_where_to = self.rowCount()
+        # 새로운 current cell과 selection
+        self.rows_paste(items, row_where_to)
+        if where_to == 1 or where_to == 3:
+            self.setCurrentCell(row_where_to, col_origin)
+        elif where_to == 2 or where_to == 4:
+            self.setCurrentCell(row_where_to + len(rows_selected) - 1, col_origin)
+        aaaa = QTableWidgetSelectionRange(row_where_to, 0, row_where_to + len(rows_selected) - 1,
+                                          self.columnCount() - 1)
+        self.setRangeSelected(aaaa, True)
+        self.setUpdatesEnabled(True)
+
+    def set_data(self):
+        start_time = time.time()
+        doc_list = read_list()
+        doc_num = len(doc_list)
+        self.setRowCount(doc_num)
+        for i in range(doc_num):
+            item_code = QTableWidgetItem(doc_list[i]['code'])
+            # item_code.setFlags(item_code.flags() ^ Qt.ItemIsEditable)
+            item_title = QTableWidgetItem(doc_list[i]['title'])
+            item_title.setFlags(item_title.flags() ^ Qt.ItemIsEditable)
+            self.setItem(i, 0, item_code)
+            self.setItem(i, 1, item_title)
+            self.setItem(i, 2, QTableWidgetItem(''))
+            # self.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
+            # self.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
+            # self.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
+            # self.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
+            # self.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
+        self.resizeColumnToContents(1)
+        # self.resizeRowsToContents()
+        # self.setColumnWidth()
+        end_time = time.time()
+        loading = end_time - start_time
+        print(f'총 {loading}초 {doc_num}개 문서\n문서당 {loading / doc_num}초')
+        print(self.rowCount())
+
+
+class TableEdit(QTableWidget):
+    sig_main_label = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setColumnCount(5)
+        self.setHorizontalHeaderLabels(['순', '1', '2', '3', '내용'])
+        self.verticalHeader().setVisible(False)
+        self.setAlternatingRowColors(True)
+        self.setGridStyle(Qt.DotLine)
+        self.resizeColumnsToContents()
+        self.verticalHeader().setDefaultSectionSize(23)
+        # self.resizeRowsToContents()
+        # self.sizePolicy().setVerticalStretch(7)
+        # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
 
 class TabMicro(QWidget):
