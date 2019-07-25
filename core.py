@@ -13,8 +13,9 @@ import keyboard
 import mouse
 import sys
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QIcon, QFont, QKeySequence
+from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import *
+#  QTime,
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 pause = False
@@ -37,7 +38,7 @@ def ddos_check(funcs, url, **kwargs):
         if soup.title:
             if soup.title.text == '비정상적인 트래픽 감지':
                 webbrowser.open('https://namu.wiki/404')
-                input('ddos 감지. 캡차 해결 후 아무 키나 입력')
+                input('비정상적인 트래픽 감지. 캡차 해결 후 아무 키나 입력')
                 continue
             else:
                 return soup
@@ -45,7 +46,7 @@ def ddos_check(funcs, url, **kwargs):
             return soup
 
 
-class Req:  # 로그인이 필요한 작업
+class Session:  # 로그인이 필요한 작업
 
     def __init__(self):  # 반복 필요 없는 것
         self.config = configparser.ConfigParser()
@@ -58,10 +59,6 @@ class Req:  # 로그인이 필요한 작업
         # self.jar = requests.cookies.RequestsCookieJar()
         # self.jar.set('umi', self.UMI, domain='namu.wiki')
         self.URL_LOGIN = 'https://namu.wiki/member/login'
-        self.login()
-
-    def test(self):
-        pass
 
     def login(self):
 
@@ -69,14 +66,43 @@ class Req:  # 로그인이 필요한 작업
         self.s.headers.update({'user-agent': self.UA})
         self.s.get('https://namu.wiki/edit/IMO')
         self.s.cookies.set('umi', self.UMI, domain='namu.wiki')
-        soup = ddos_check(self.s.post, self.URL_LOGIN, headers=self.make_header(self.URL_LOGIN), cookies=self.s.cookies,
-                          data={'username': self.ID, 'password': self.PW})
-        if soup.select(
-                'body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right > li > div > '
-                'div.dropdown-item.user-info > div > div')[1].text == 'Member':
-            print('login SUCCESS')
+        soup = ddos_check(self.s.post, self.URL_LOGIN, headers=self.make_header(self.URL_LOGIN),
+                          cookies=self.s.cookies, data={'username': self.ID, 'password': self.PW})
+        info = soup.select('body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right >'
+                           'li > div > div.dropdown-item.user-info > div > div')
+        if info[1].text == 'Member':
+            return f'login SUCCESS {info[0].text}'
         else:
-            print('login FAILURE')
+            return 'login FAILURE'
+    
+    @classmethod
+    def make_header(cls, url):
+        return {'referer': url}
+
+
+    # @classmethod
+    # def append_list(cls, code_list):
+    #     for doc_code in code_list:
+    #         with open('doc_list.csv', 'a', encoding='utf-8', newline='') as csvfile:
+    #             writer = csv.DictWriter(csvfile,
+    #                                     LIST_FIELD)  # ['code', 'title', 'option', 'find', 'replace', 'summary']
+    #             writer.writerow({'code': doc_code, 'title': parse.unquote(doc_code)})
+    # 
+    # @classmethod
+    # def read_list(cls):  # csv 읽기 & 입력값 첨가
+    #     lists = []
+    #     with open('doc_list.csv', 'r', encoding='utf-8', newline='') as csvfile:
+    #         reader = csv.DictReader(csvfile)
+    #         for row in reader:
+    #             dict_row = dict(row)
+    #             if dict_row['option']:
+    #                 dict_row['option'] = int(dict_row['option'])
+    #             lists.append(dict_row)
+    #     return lists
+class ReqPost(Session):
+    def __init__(self):
+        super().__init__()
+        # self.login()
 
     def post(self, doc_code, edit_list):
         doc_url = f'https://namu.wiki/edit/{doc_code}'
@@ -120,14 +146,16 @@ class Req:  # 로그인이 필요한 작업
     def find_replace(cls, text, edit_list):
         find_temp = ''
         summary = ''
+        option_temp = 0
         for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
             if edit[1] == 0:  # 문서 내 모든 텍스트
                 if edit[2] == 0:  # 찾기
+                    option_temp = edit[3]
                     find_temp = edit[4]
                 elif edit[2] == 1:  # 바꾸기
-                    if edit[3] == 0:  # 일반
+                    if option_temp == 0:  # 일반
                         text = text.replace(find_temp, edit[4])
-                    elif edit[3] == 1:  # 정규식
+                    elif option_temp == 1:  # 정규식
                         text = re.sub(find_temp, edit[4], text)
                 elif edit[2] == 2:  # 넣기
                     if edit[3] == 0:  # 맨 앞
@@ -139,10 +167,6 @@ class Req:  # 로그인이 필요한 작업
             elif edit[1] == 2:  # 복구 옵션
                 pass
         return [text, summary]
-
-    @classmethod
-    def make_header(cls, url):
-        return {'referer': url}
 
     @classmethod
     def is_captcha(cls, soup):
@@ -170,32 +194,13 @@ class Req:  # 로그인이 필요한 작업
         else:
             return False
 
-    # @classmethod
-    # def append_list(cls, code_list):
-    #     for doc_code in code_list:
-    #         with open('doc_list.csv', 'a', encoding='utf-8', newline='') as csvfile:
-    #             writer = csv.DictWriter(csvfile,
-    #                                     LIST_FIELD)  # ['code', 'title', 'option', 'find', 'replace', 'summary']
-    #             writer.writerow({'code': doc_code, 'title': parse.unquote(doc_code)})
 
-    @classmethod
-    def read_list(cls):  # csv 읽기 & 입력값 첨가
-        lists = []
-        with open('doc_list.csv', 'r', encoding='utf-8', newline='') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                dict_row = dict(row)
-                if dict_row['option']:
-                    dict_row['option'] = int(dict_row['option'])
-                lists.append(dict_row)
-        return lists
-
-
-class ReqAndClick(QWidget, Req):
+class ReqGet(QObject, Session):
     sig_get_click = pyqtSignal(list)
 
     def __init__(self):
         super().__init__()
+        self.s = requests.Session()
         mouse.on_right_click(self.get_click)
 
     def get_click(self):
@@ -318,8 +323,10 @@ class MainWindow(QMainWindow):
         # menu_bar.setNativeMenuBar(False)
         menu_file = menu_bar.addMenu('&File')
         menu_file.addAction(test_action)
-
         self.show()
+
+    def closeEvent(self, event):
+        print('abcdefg')
 
     def test(self):
         print('aaaaaaaa')
@@ -341,14 +348,16 @@ class MainWidget(QWidget):
         self.tabs = QTabWidget()
         self.tab_a = TabMacro()
         self.tab_b = TabMicro()
-        self.tab_a.sig_test.connect(self.set_main_label)
-        self.tab_a.sig_test.connect(self.set_main_label)
+        self.tab_a.sig_main_label.connect(self.set_main_label)
+        self.tab_b.sig_main_label.connect(self.set_main_label)
         self.tabs.addTab(self.tab_a, '    Macro    ')
         self.tabs.addTab(self.tab_b, '    Micro    ')
 
         box_v = QVBoxLayout()
         box_v.addWidget(self.main_label)
         box_v.addWidget(self.tabs)
+        box_v.setStretchFactor(self.main_label, 1)
+        box_v.setStretchFactor(self.tabs, 22)
         self.setLayout(box_v)
 
     @pyqtSlot(str)
@@ -357,15 +366,13 @@ class MainWidget(QWidget):
 
 
 class TabMacro(QWidget):
-    sig_test = pyqtSignal(str)
-    sig_table_doc_main_label = pyqtSignal(str)
+    sig_main_label = pyqtSignal(str)
+    send_doc_list = pyqtSignal(list)
+    send_edit_list = pyqtSignal(list)
+    send_speed = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
-        self.initUI()
-
-    def initUI(self):
-
         # table doc
         self.table_doc = TableDoc()
         self.table_doc.sig_main_label.connect(self.str_to_main)
@@ -375,7 +382,6 @@ class TabMacro(QWidget):
         self.text_preview = QTextEdit()
         self.text_preview.setPlaceholderText('미리보기 화면')
         self.text_preview.setReadOnly(True)
-        # self.text_preview.setDisabled(True)
         # table edit
         self.table_edit = TableEdit()
         self.table_edit.sig_insert.connect(self.table_doc.insert_edit_num)
@@ -412,13 +418,14 @@ class TabMacro(QWidget):
                                        'padding-right: 30px;'
                                        'border-style: solid;'
                                        'border-width: 0px')
-        self.combo_speed.addItems(['저속', '고속'])
-        self.combo_speed.setCurrentIndex(1)
+        self.combo_speed.addItems(['고속', '저속'])
+
         self.btn_do = QPushButton('시작', self)
-        self.btn_do.clicked.connect(self.iterate)
-        
+        self.btn_do.clicked.connect(self.iterate_start)
+
         self.btn_pause = QPushButton('정지', self)
-        self.btn_pause.clicked.connect(self.pause)
+        self.btn_pause.clicked.connect(self.iterate_quit)
+        self.btn_pause.setEnabled(False)
 
         self.split_v = QSplitter(Qt.Vertical)
         self.split_v.addWidget(self.text_preview)
@@ -459,9 +466,48 @@ class TabMacro(QWidget):
 
         self.setLayout(box_v)
 
+        # req, thread
+        self.init_req()
+
+    def init_req(self):
         # req post
-        self.req_macro = ReqAndClick()
-        self.req_macro.sig_get_click.connect(self.table_doc.insert_codes)
+        self.req_get = ReqGet()
+        self.req_get.sig_get_click.connect(self.table_doc.insert_codes)
+
+        # thread
+        self.th_macro = QThread()
+        self.obj_macro = Iterate()
+        self.obj_macro.moveToThread(self.th_macro)
+        self.obj_macro.finished.connect(self.iterate_finish)
+        self.th_macro.started.connect(self.obj_macro.work)
+        self.obj_macro.label_text.connect(self.str_to_main)
+        self.obj_macro.doc_set_current.connect(self.table_doc.set_current)
+        self.obj_macro.doc_remove.connect(self.table_doc.removeRow)
+        self.obj_macro.doc_error.connect(self.table_doc.set_error)
+        self.send_doc_list.connect(self.obj_macro.get_doc_list)
+        self.send_edit_list.connect(self.obj_macro.get_edit_list)
+        self.send_speed.connect(self.obj_macro.get_speed)
+
+    @pyqtSlot()
+    def iterate_start(self):
+        self.send_doc_list.emit(self.table_doc.rows_copy(range(self.table_doc.rowCount())))
+        self.send_edit_list.emit(self.edit_list_rearrange(self.table_edit.rows_copy(range(self.table_edit.rowCount()))))
+        self.send_speed.emit(self.combo_speed.currentIndex())
+        self.btn_do.setEnabled(False)
+        self.btn_pause.setEnabled(True)
+        self.th_macro.start()
+
+    @pyqtSlot()
+    def iterate_quit(self):
+        self.obj_macro.is_quit = True
+        self.str_to_main('정지 버튼을 눌렀습니다.')
+
+    @pyqtSlot()
+    def iterate_finish(self):
+        self.th_macro.quit()
+        self.obj_macro.is_quit = False
+        self.btn_do.setEnabled(True)
+        self.btn_pause.setEnabled(False)
 
     @pyqtSlot(int)
     def combo_opt1_change(self, i):
@@ -487,15 +533,6 @@ class TabMacro(QWidget):
             self.combo_opt3.setEnabled(True)
             self.combo_opt3.clear()
             self.combo_opt3.addItems(self.combo_opt3_3_text)
-
-    @pyqtSlot(int, int)
-    def table_edit_add_new_row(self, r, c):  # 시그널 슬롯 예시
-        rows_total = self.table_edit.rowCount()
-        if r == rows_total - 1:
-            self.table_edit.insertRow(rows_total)
-        self.str_to_main('동동이')  # sig_test 라는 시그널을 뱉음
-        # self.table_edit.setItem()
-        # self.table_edit.item
 
     @pyqtSlot()
     def add_to_edit(self):
@@ -542,13 +579,14 @@ class TabMacro(QWidget):
 
     @pyqtSlot(str)
     def str_to_main(self, t):
-        self.sig_test.emit(t)
+        self.sig_main_label.emit(t)
 
     @pyqtSlot(str)
     def code_to_preview(self, doc_code):
         # self.text_preview.setEnabled(True)
         soup = ddos_check(requests.get, f'https://namu.wiki/raw/{doc_code}')
         self.text_preview.setText(soup.text)
+        self.str_to_main('')
 
     def edit_list_rearrange(self, list):
         edit_list = []
@@ -557,7 +595,7 @@ class TabMacro(QWidget):
         for edit in list:
             #  일단 str로 된 옵션을 index int로 변환
             new = [edit[0], self.combo_opt1_text.index(edit[1]),
-                        self.combo_opt2_text.index(edit[2]), 0, edit[4]]
+                        self.combo_opt2_text.index(edit[2]), -1, edit[4]]
             if edit[3] in self.combo_opt3_1_text:
                 new[3] = self.combo_opt3_1_text.index(edit[3])
             elif edit[3] in self.combo_opt3_3_text:
@@ -577,84 +615,108 @@ class TabMacro(QWidget):
             edit_list.append(temp)
         return edit_list
 
-    @pyqtSlot()
-    def iterate(self):
-        doc_list = self.table_doc.rows_copy(range(self.table_doc.rowCount()))
-        edit_list = self.edit_list_rearrange(self.table_edit.rows_copy(range(self.table_edit.rowCount())))
-        opt_iter = self.combo_speed.currentIndex()
+
+class Iterate(QObject, ReqPost):
+    label_text = pyqtSignal(str)
+    doc_remove = pyqtSignal(int)
+    doc_set_current = pyqtSignal(int)
+    doc_error = pyqtSignal(int, str)
+    finished = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        logged_in = self.login()
+        self.label_text.emit(logged_in)
+        self.is_quit = False
+
+    def work(self):
         edit_temp = []
         edit_row = 0
         deleted = 0
         deleted_temp = 0
-        self.btn_do.setEnabled(False)
-        for i in range(len(doc_list)):  # 0 code, 1 title, 2 etc
-            time_start = time.time()
-            if pause:
-                self.str_to_main('정지 버튼을 눌러 편집이 중단되었습니다.')
-                self.pause()  # 다시 false 상태로
-                break
-            elif '#' in doc_list[i][0]:  # 편집 지시자
-                if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                    self.table_doc.removeRow(edit_row)  # 더는 쓸모 없으니까 지시자 지움
-                    deleted += 1
-                    deleted_temp = 0
-                edit_row = i
-                edit_num = int(doc_list[i][0][1:])
-                # edit_num = re.sub('#(\d+)', '\g<1>', doc_list[i][0])
-                edit_temp = edit_list[edit_num - 1]  # 순번이 1이면 0번 항목
-                for edit in edit_temp:
-                    write_csv('edit_log.csv', LOG_FIELD,
-                              {'code': f'#{edit[0]}', 'title': f'편집사항 {edit[0]}번',
-                               'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4],
-                               'time': '', 'rev': '', 'error': ''})
-            elif '^' in doc_list[i][0]:  # 중단자
-                self.str_to_main('편집이 중단되었습니다.')
-                self.table_doc.removeRow(i - deleted)
-                break
-            else:  # 문서
-                if i > 0:  # 목록 처음이 편집 지시자가 아닌 경우만
-                    label = f'( {i} / {len(doc_list)} ) {doc_list[i][1]}'
-                    self.str_to_main(label)
-                    while True:
-                        posted = self.req_macro.post(doc_list[i][0], edit_temp)  # 포스트 실시
-                        if posted['rerun']:  # 리캡챠 발생
-                            self.str_to_main('reCAPTCHA 감지되었습니다.')
-                            self.req_macro.login()
-                        else:
-                            if posted['error']:  # 에러 발생
-                                self.str_to_main(f'{label}\n{posted["error"]}')
-                                self.table_doc.setItem(i, 2, QTableWidgetItem(posted['error']))
-                            else:  # 정상
-                                self.table_doc.removeRow(i - deleted)
-                                deleted += 1
-                                deleted_temp += 1
-                            write_csv('edit_log.csv', LOG_FIELD,
-                                      {'code': doc_list[i][0], 'title': doc_list[i][1],
-                                       'opt1': '', 'opt2': '', 'opt3': '', 'edit': '',
-                                       'time': posted['time'], 'rev': posted['rev'], 'error': posted['error']})
-                            break
-                else:
-                    self.str_to_main('편집 사항이 존재하지 않습니다.')
-                    break
+        t1 = time.time()
 
-            if opt_iter == 0:  # 저속 옵션
-                time_passed = time.time() - time_start
-                if time_passed < self.req_macro.DELAY:
-                    time.sleep(self.req_macro.DELAY - time_passed)
-            if i == len(doc_list) - 1:  # 마지막 행
-                if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                    self.table_doc.removeRow(edit_row)  # 더는 쓸모 없으니까 지시자 지움
-                self.str_to_main('편집이 모두 완료되었습니다.')
-        self.btn_do.setEnabled(True)
-
-    @pyqtSlot()
-    def pause(self):
-        global pause
-        if pause:
-            pause = False
+        if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
+            self.label_text.emit('편집을 시작할 수 없습니다. 문서 목록을 확인해주세요.')
         else:
-            pause = True
-        print(pause)
+            self.label_text.emit('편집을 시작합니다.')
+            if self.index_speed == 0:  # 고속이면
+                is_delay = False
+            else:
+                is_delay = True
+            # 본작업 루프 시작
+            for i in range(len(self.doc_list)):  # 0 code, 1 title, 2 etc
+                self.doc_set_current.emit(i - deleted)
+                if self.is_quit:  # 정지 버튼 눌려있으면 중단
+                    self.label_text.emit('편집이 정지되었습니다.')
+                    break
+                if '#' in self.doc_list[i][0]:  # 편집 지시자
+                    if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                        self.doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
+                        deleted += 1
+                        deleted_temp = 0
+                    edit_row = i
+                    edit_num = int(self.doc_list[i][0][1:])
+                    # edit_num = re.sub('#(\d+)', '\g<1>', self.doc_list[i][0])
+                    self.label_text.emit(f'편집사항 {edit_num}번 진행 중입니다.')
+                    edit_temp = self.edit_list[edit_num - 1]  # 순번이 1이면 0번 항목
+                    for edit in edit_temp:
+                        write_csv('edit_log.csv', LOG_FIELD,
+                                  [{'code': f'#{edit[0]}', 'title': f'편집사항 {edit[0]}번',
+                                    'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3],
+                                    'edit': edit[4], 'time': '', 'rev': '', 'error': ''}])
+                elif '^' in self.doc_list[i][0]:  # 중단자
+                    self.label_text.emit('편집이 중단되었습니다.')
+                    self.doc_remove.emit(i - deleted)
+                    break
+                else:  # 문서
+                    if i > 0:  # 목록 처음이 편집 지시자가 아닌 경우만
+                        label = f'( {i + 1} / {len(self.doc_list)} ) {self.doc_list[i][1]}'
+                        self.label_text.emit(label)
+                        while True:
+                            posted = self.post(self.doc_list[i][0], edit_temp)  # 포스트 실시
+                            if posted['rerun']:  # 리캡챠 발생
+                                # self.label_text.emit('reCAPTCHA 감지되었습니다.')
+                                self.login()
+                            else:
+                                if is_delay:  # 저속 옵션
+                                    t2 = time.time()
+                                    waiting = self.DELAY - (t2 - t1)
+                                    if waiting > 0:
+                                        time.sleep(waiting)
+                                    t1 = time.time()
+                                if posted['error']:  # 에러 발생
+                                    self.label_text.emit(f'{label}\n{posted["error"]}')
+                                    self.doc_error.emit(i - deleted, posted['error'])
+                                else:  # 정상
+                                    self.doc_remove.emit(i - deleted)
+                                    deleted += 1
+                                    deleted_temp += 1
+                                write_csv('edit_log.csv', LOG_FIELD,
+                                          [{'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
+                                            'opt1': '', 'opt2': '', 'opt3': '', 'edit': '',
+                                            'time': posted['time'], 'rev': posted['rev'], 'error': posted['error']}])
+                                break
+                    else:
+                        self.label_text.emit('편집 사항이 존재하지 않습니다.')
+                        break
+                if i == len(self.doc_list) - 1:  # 마지막 행
+                    if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                        self.doc_remove.emit(edit_row)  # 더는 쓸모 없으니까 지시자 지움
+                    self.label_text.emit('편집이 모두 완료되었습니다.')
+        self.finished.emit()
+
+    @pyqtSlot(list)
+    def get_doc_list(self, doc_list):
+        self.doc_list = doc_list
+
+    @pyqtSlot(list)
+    def get_edit_list(self, edit_list):
+        self.edit_list = edit_list
+
+    @pyqtSlot(int)
+    def get_speed(self, index):
+        self.index_speed = index
 
 
 class TableEnhanced(QTableWidget):
@@ -765,7 +827,7 @@ class TableEnhanced(QTableWidget):
             else:
                 row_where_to = rows_selected[0] - 1
         elif where_to == 2:  # 한 칸 아래로
-            row_last = rows_selected[1]
+            row_last = rows_selected[-1]
             if row_last - len(rows_selected) == self.rowCount() - 1:  # 마지막 줄이었으면
                 row_where_to = self.rowCount()  # - 1 - deletes['deleted']
             else:
@@ -780,9 +842,9 @@ class TableEnhanced(QTableWidget):
             self.setCurrentCell(row_where_to, col_origin)
         elif where_to == 2 or where_to == 4:
             self.setCurrentCell(row_where_to + len(rows_selected) - 1, col_origin)
-        aaaa = QTableWidgetSelectionRange(row_where_to, 0, row_where_to + len(rows_selected) - 1,
-                                          self.columnCount() - 1)
-        self.setRangeSelected(aaaa, True)
+        range_to_select = QTableWidgetSelectionRange(row_where_to, 0,
+                                                     row_where_to + len(rows_selected) - 1, self.columnCount() - 1)
+        self.setRangeSelected(range_to_select, True)
         self.setUpdatesEnabled(True)
 
 
@@ -800,7 +862,7 @@ class TableDoc(TableEnhanced):
         # self.horizontalHeader().setMaximumSectionSize(450)
 
         self.hideColumn(0)
-        # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         # self.setSortingEnabled(True)
         # self.set_data()
 
@@ -818,15 +880,27 @@ class TableDoc(TableEnhanced):
         if e.button() == Qt.LeftButton:
             self.sig_preview.emit(self.item(self.currentRow(), 0).text())
 
+    @pyqtSlot(int, str)
+    def set_error(self, row, text):
+        self.setItem(row, 2, QTableWidgetItem(text))
+        self.resizeColumnToContents(2)
+
+    @pyqtSlot(int)
+    def set_current(self, row):
+        self.setCurrentCell(row, 1)
+
     @pyqtSlot(list)
     def insert_codes(self, code_list):
         item_list = []
         for code in code_list:
             item_list.append([code, parse.unquote(code), ''])  # #######
         num_before = self.rowCount()
-        self.setRowCount(num_before + len(item_list) - 1)
         self.rows_paste(item_list, num_before)
         self.setCurrentCell(self.rowCount() - 1, 1)
+        self.resizeColumnToContents(1)
+        if self.columnWidth(1) > 450:
+            self.setColumnWidth(1, 450)
+        self.resizeRowsToContents()
 
     # def set_data(self):
     #     # doc_list = ReqList.read_list()   #@#@#@#@#@#@#@#@#@######################
@@ -845,11 +919,8 @@ class TableDoc(TableEnhanced):
     #         # self.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
     #         # self.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
     #         # self.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
-    #     self.resizeColumnToContents(1)
-    #     if self.columnWidth(1) > 450:
-    #         self.setColumnWidth(1, 450)
-    #     # self.resizeRowsToContents()
-    #     # self.setColumnWidth()
+    #
+
 
     @pyqtSlot(str)
     def insert_edit_num(self, edit_num):
@@ -906,6 +977,8 @@ class TableEdit(TableEnhanced):
 
 
 class TabMicro(QWidget):
+    sig_main_label = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -927,10 +1000,21 @@ class WebView(QWebEngineView):
 
 # ==========
 
-def write_csv(file_name, field, dict_line):
+def write_csv(file_name, field, dict_list):
     with open(file_name, 'a', encoding='utf-8', newline='') as csv_file:
         writer = csv.DictWriter(csv_file, field)
-        writer.writerow(dict_line)
+        for dict_line in dict_list:
+            writer.writerow(dict_line)
+
+
+def read_csv(file_name):
+    lists = []
+    with open(file_name, 'r', encoding='utf-8', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            dict_row = dict(row)
+            lists.append(dict_row)
+    return lists
 
 
 def check_setting():
@@ -976,5 +1060,4 @@ if __name__ == '__main__':
     '''
     app = QApplication(sys.argv)
     win = MainWindow()
-    # win.main_widget.tab_a.table_doc.
     sys.exit(app.exec_())
