@@ -24,6 +24,7 @@ LOG_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'edit', 'time', 'rev', 'er
 
 
 def ddos_check(funcs, url, **kwargs):
+    # todo 별도 클래스, 다이얼로그
     while True:
         if 'file' in kwargs:
             r = funcs(url, headers=kwargs['headers'], cookies=kwargs['cookies'], data=kwargs['data'],
@@ -80,25 +81,6 @@ class Session:  # 로그인이 필요한 작업
         return {'referer': url}
 
 
-    # @classmethod
-    # def append_list(cls, code_list):
-    #     for doc_code in code_list:
-    #         with open('doc_list.csv', 'a', encoding='utf-8', newline='') as csvfile:
-    #             writer = csv.DictWriter(csvfile,
-    #                                     LIST_FIELD)  # ['code', 'title', 'option', 'find', 'replace', 'summary']
-    #             writer.writerow({'code': doc_code, 'title': parse.unquote(doc_code)})
-    # 
-    # @classmethod
-    # def read_list(cls):  # csv 읽기 & 입력값 첨가
-    #     lists = []
-    #     with open('doc_list.csv', 'r', encoding='utf-8', newline='') as csvfile:
-    #         reader = csv.DictReader(csvfile)
-    #         for row in reader:
-    #             dict_row = dict(row)
-    #             if dict_row['option']:
-    #                 dict_row['option'] = int(dict_row['option'])
-    #             lists.append(dict_row)
-    #     return lists
 class ReqPost(Session):
     def __init__(self):
         super().__init__()
@@ -143,28 +125,28 @@ class ReqPost(Session):
                 'rev': baserev, 'error': error_log}
 
     @classmethod
-    def find_replace(cls, text, edit_list):
+    def find_replace(cls, text, edit_list, title=''):
         find_temp = ''
         summary = ''
-        option_temp = 0
+        option_temp = ''
         for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
-            if edit[1] == 0:  # 문서 내 모든 텍스트
-                if edit[2] == 0:  # 찾기
+            if edit[1] == '모두':  # 문서 내 모든 텍스트
+                if edit[2] == '찾기':
                     option_temp = edit[3]
                     find_temp = edit[4]
-                elif edit[2] == 1:  # 바꾸기
-                    if option_temp == 0:  # 일반
+                elif edit[2] == '바꾸기':
+                    if option_temp == '일반':
                         text = text.replace(find_temp, edit[4])
-                    elif option_temp == 1:  # 정규식
+                    elif option_temp == '정규식':
                         text = re.sub(find_temp, edit[4], text)
-                elif edit[2] == 2:  # 넣기
-                    if edit[3] == 0:  # 맨 앞
+                elif edit[2] == '넣기':
+                    if edit[3] == '맨 앞':  # 맨 앞
                         text = f'{edit[4]}\n{text}'
-                    elif edit[3] == 1:  # 맨 뒤
+                    elif edit[3] == '맨 뒤':  # 맨 뒤
                         text = f'{text}\n{edit[4]}'
-            elif edit[1] == 1:  # 편집요약
+            elif edit[1] == '요약':  # 편집요약
                 summary = edit[4]
-            elif edit[1] == 2:  # 복구 옵션
+            elif edit[1] == '복구':  # 복구 옵션
                 pass
         return [text, summary]
 
@@ -203,7 +185,7 @@ class ReqGet(QObject, Session):
         self.s = requests.Session()
         mouse.on_right_click(self.get_click)
 
-    def get_click(self):
+    def get_click(self, opt=0):
         is_ctrl = keyboard.is_pressed('ctrl')
         if is_ctrl:
             pyperclip.copy('')
@@ -217,8 +199,12 @@ class ReqGet(QObject, Session):
                 keyboard.unblock_key('ctrl')
                 code = self.get_code(pasted_url)
                 if code:
-                    # self.sig_get_click.emit(self.get_xref(code))
-                    self.sig_get_click.emit([code])
+                    if opt == 0:  # 1개
+                        self.sig_get_click.emit([code])
+                    elif opt == 1:  # 역링크
+                        self.sig_get_click.emit(self.get_xref(code))
+                    elif opt == 2:  # 분류
+                        self.sig_get_click.emit(self.get_cat(code))
                 else:
                     winsound.Beep(500, 50)
             else:
@@ -243,6 +229,7 @@ class ReqGet(QObject, Session):
             return False
 
     def get_xref(self, doc_code):
+        # todo 스레드
         list_space = []
         list_ref = []
         soup = ddos_check(self.s.get, f'https://namu.wiki/xref/{doc_code}')
@@ -269,6 +256,7 @@ class ReqGet(QObject, Session):
         return list_ref
 
     def get_cat(self, doc_code):
+        # todo 스레드
         list_cat = []
         btn_done = 0
         added = ''
@@ -302,9 +290,7 @@ class ReqGet(QObject, Session):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.initUI()
 
-    def initUI(self):
         self.setStyleSheet('font: 10pt \'맑은 고딕\';'
                            'color: #373a3c')
         # self.setfont(QFont('Segoe UI', 10))
@@ -316,19 +302,79 @@ class MainWindow(QMainWindow):
         # self.statusBar().showMessage('Ready')
 
         test_action = QAction(QIcon('icon.png'), 'aaaa', self)
-        test_action.triggered.connect(self.test)
+        test_action.triggered.connect(self.test_act)
         test_action.setShortcut('Ctrl + Q')
 
         menu_bar = self.menuBar()
         # menu_bar.setNativeMenuBar(False)
         menu_file = menu_bar.addMenu('&File')
         menu_file.addAction(test_action)
+
+        self.read_list_csv()
         self.show()
 
-    def closeEvent(self, event):
-        print('abcdefg')
+    def read_list_csv(self):
+        lists = read_csv('doc_list.csv')
+        doc_to_insert = []
+        edit_to_insert = []
+        num = 1
+        order_done = set()
+        t_m = self.main_widget.tab_a
+        for i in range(len(lists)):
+            order_t = lists[i]['code']
+            if '#' in order_t or '$' in order_t:  # 편집 지시자
+                order = int(order_t[1:])
+                if order in order_done:
+                    if lists[i]['opt1']:  # 선두 아닌 일반
+                        edit_to_insert.append(
+                            [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['edit']])
+                    else:  # 중복 지시자
+                        doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
+                else:
+                    order_done.add(order)
+                    edit_to_insert.append(
+                        [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['edit']])
+                    if '#' in order_t:  # 지시자 있는 선두
+                        doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
+            else:  # 문서
+                doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
+        t_m.table_doc.insert_items(doc_to_insert)
+        t_m.table_edit.insert_items(edit_to_insert)
 
-    def test(self):
+    def write_list_csv(self):
+        t_m = self.main_widget.tab_a
+        docs = t_m.table_doc.rows_copy(range(t_m.table_doc.rowCount()))
+        edits = t_m.edit_list_rearrange(t_m.table_edit.rows_copy(range(t_m.table_edit.rowCount())))
+        to_write = []
+        order_done = set()
+        for i in range(len(docs)):
+            if '#' in docs[i][0]:  # 편집 지시자
+                order = int(docs[i][0][1:])
+                if order not in order_done:
+                    for edit in edits[order - 1]:  # 아예 처음
+                        to_write.append({'code': docs[i][0], 'title': docs[i][1],
+                                        'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
+                    order_done.add(order)
+                else:  # 중복
+                    to_write.append({'code': docs[i][0], 'title': docs[i][1],
+                                     'opt1': '', 'opt2': '', 'opt3': '', 'edit': ''})
+            else:  # 문서
+                to_write.append({'code': docs[i][0], 'title': docs[i][1],
+                                 'opt1': '', 'opt2': '', 'opt3': '', 'edit': ''})
+        if len(edits) > len(order_done):  # 편집 지시자 없는 edit
+            for aaa in edits:
+                if int(aaa[0][0]) not in order_done:
+                    for edit in aaa:
+                        to_write.append({'code': f'${edit[0]}', 'title': f'💡 편집사항 #{edit[0]} 💡',
+                                         'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
+
+        write_csv('doc_list.csv', 'w', LIST_FIELD, to_write)
+
+    def closeEvent(self, event):
+        self.write_list_csv()
+        print('finished..')
+
+    def test_act(self):
         print('aaaaaaaa')
 
 
@@ -336,9 +382,6 @@ class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.initUI()
-
-    def initUI(self):
         # label
         self.main_label = QLabel('Actinidia v 0.01')
         self.main_label.setAlignment(Qt.AlignCenter)
@@ -412,7 +455,7 @@ class TabMacro(QWidget):
 
         # last row
         self.combo_speed = QComboBox(self)
-        self.combo_speed.setStyleSheet('background-color: rgb(190, 190, 190);'
+        self.combo_speed.setStyleSheet('background-color: #f0f0f0;'
                                        'color: black;'
                                        'padding-left: 10px;'
                                        'padding-right: 30px;'
@@ -472,7 +515,7 @@ class TabMacro(QWidget):
     def init_req(self):
         # req post
         self.req_get = ReqGet()
-        self.req_get.sig_get_click.connect(self.table_doc.insert_codes)
+        self.req_get.sig_get_click.connect(self.table_doc.receive_codes)
 
         # thread
         self.th_macro = QThread()
@@ -537,38 +580,18 @@ class TabMacro(QWidget):
     @pyqtSlot()
     def add_to_edit(self):
         # 값 추출
-        order = self.spin_1.value()
         opt1 = self.combo_opt1.currentText()
-        opt2 = self.combo_opt2.currentText()
-        opt3 = self.combo_opt3.currentText()
-        text = self.line_input.text()
-        rows_total = self.table_edit.rowCount()
-
-        item0 = QTableWidgetItem(str(order))
-        item1 = QTableWidgetItem(opt1)
         if self.combo_opt2.isEnabled():
-            item2 = QTableWidgetItem(opt2)
+            opt2 = self.combo_opt2.currentText()
         else:
-            item2 = QTableWidgetItem('')
+            opt2 = ''
         if self.combo_opt3.isEnabled():
-            item3 = QTableWidgetItem(opt3)
+            opt3 = self.combo_opt3.currentText()
         else:
-            item3 = QTableWidgetItem('')
+            opt3 = ''
 
-        item0.setFlags(item0.flags() ^ Qt.ItemIsEditable)  # ^은 빼기 |은 더하기
-        item1.setFlags(item1.flags() ^ Qt.ItemIsEditable)
-        item2.setFlags(item2.flags() ^ Qt.ItemIsEditable)
-        item3.setFlags(item3.flags() ^ Qt.ItemIsEditable)
+        self.table_edit.insert_items([[str(self.spin_1.value()), opt1, opt2, opt3, self.line_input.text()]])
 
-        # 값 입력
-        self.table_edit.setRowCount(rows_total + 1)
-        self.table_edit.setItem(rows_total, 0, item0)
-        self.table_edit.setItem(rows_total, 1, item1)
-        self.table_edit.setItem(rows_total, 2, item2)
-        self.table_edit.setItem(rows_total, 3, item3)
-        self.table_edit.setItem(rows_total, 4, QTableWidgetItem(text))
-        self.table_edit.resizeColumnsToContents()
-        self.table_edit.resizeRowsToContents()
         # 입력 후
         self.line_input.clear()
         if opt1 == self.combo_opt1_text[0]:
@@ -576,6 +599,11 @@ class TabMacro(QWidget):
                 self.combo_opt2.setCurrentIndex(0)
             elif opt2 == self.combo_opt2_text[0]:  # 찾기
                 self.combo_opt2.setCurrentIndex(1)
+
+        # item0.setFlags(item0.flags() ^ Qt.ItemIsEditable)  # ^은 빼기 |은 더하기
+        # item1.setFlags(item1.flags() ^ Qt.ItemIsEditable)
+        # item2.setFlags(item2.flags() ^ Qt.ItemIsEditable)
+        # item3.setFlags(item3.flags() ^ Qt.ItemIsEditable)
 
     @pyqtSlot(str)
     def str_to_main(self, t):
@@ -588,31 +616,14 @@ class TabMacro(QWidget):
         self.text_preview.setText(soup.text)
         self.str_to_main('')
 
-    def edit_list_rearrange(self, list):
+    @classmethod
+    def edit_list_rearrange(cls, lists):  # 이중 리스트를 삼중 리스트로 변환
         edit_list = []
-        temp = []
-        i = 1
-        for edit in list:
-            #  일단 str로 된 옵션을 index int로 변환
-            new = [edit[0], self.combo_opt1_text.index(edit[1]),
-                        self.combo_opt2_text.index(edit[2]), -1, edit[4]]
-            if edit[3] in self.combo_opt3_1_text:
-                new[3] = self.combo_opt3_1_text.index(edit[3])
-            elif edit[3] in self.combo_opt3_3_text:
-                new[3] = self.combo_opt3_3_text.index(edit[3])
-            # 순이 같은 것끼리 한 리스트로 모음
-            num = int(new[0])
-            while True:
-                if num == i:
-                    temp.append(new)  # 쓸 목록에 추가
-                    break
-                else:
-                    if temp:
-                        edit_list.append(temp)
-                        temp = []
-                    i += 1
-        if temp:  # 마지막
-            edit_list.append(temp)
+        for edit in lists:
+            order = int(edit[0])
+            while len(edit_list) < order:
+                edit_list.append([])
+            edit_list[order - 1].append(edit)
         return edit_list
 
 
@@ -637,7 +648,7 @@ class Iterate(QObject, ReqPost):
         t1 = time.time()
 
         if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
-            self.label_text.emit('편집을 시작할 수 없습니다. 문서 목록을 확인해주세요.')
+            self.label_text.emit('편집을 시작할 수 없습니다. 목록을 확인해주세요.')
         else:
             self.label_text.emit('편집을 시작합니다.')
             if self.index_speed == 0:  # 고속이면
@@ -660,11 +671,12 @@ class Iterate(QObject, ReqPost):
                     # edit_num = re.sub('#(\d+)', '\g<1>', self.doc_list[i][0])
                     self.label_text.emit(f'편집사항 {edit_num}번 진행 중입니다.')
                     edit_temp = self.edit_list[edit_num - 1]  # 순번이 1이면 0번 항목
+                    edit_temp_to_write = []
                     for edit in edit_temp:
-                        write_csv('edit_log.csv', LOG_FIELD,
-                                  [{'code': f'#{edit[0]}', 'title': f'편집사항 {edit[0]}번',
-                                    'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3],
-                                    'edit': edit[4], 'time': '', 'rev': '', 'error': ''}])
+                        edit_temp_to_write.append({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
+                                                   'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3],
+                                                   'edit': edit[4], 'time': '', 'rev': '', 'error': ''})
+                    write_csv('edit_log.csv', 'a', LOG_FIELD, edit_temp_to_write)
                 elif '^' in self.doc_list[i][0]:  # 중단자
                     self.label_text.emit('편집이 중단되었습니다.')
                     self.doc_remove.emit(i - deleted)
@@ -692,7 +704,7 @@ class Iterate(QObject, ReqPost):
                                     self.doc_remove.emit(i - deleted)
                                     deleted += 1
                                     deleted_temp += 1
-                                write_csv('edit_log.csv', LOG_FIELD,
+                                write_csv('edit_log.csv', 'a', LOG_FIELD,
                                           [{'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                             'opt1': '', 'opt2': '', 'opt3': '', 'edit': '',
                                             'time': posted['time'], 'rev': posted['rev'], 'error': posted['error']}])
@@ -853,14 +865,9 @@ class TableDoc(TableEnhanced):
 
     def __init__(self):
         super().__init__()
-        self.initUI()
-
-    def initUI(self):
         self.setColumnCount(3)
         self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
         self.horizontalScrollBar().setVisible(True)
-        # self.horizontalHeader().setMaximumSectionSize(450)
-
         self.hideColumn(0)
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         # self.setSortingEnabled(True)
@@ -890,37 +897,20 @@ class TableDoc(TableEnhanced):
         self.setCurrentCell(row, 1)
 
     @pyqtSlot(list)
-    def insert_codes(self, code_list):
+    def receive_codes(self, code_list):
         item_list = []
         for code in code_list:
             item_list.append([code, parse.unquote(code), ''])  # #######
-        num_before = self.rowCount()
-        self.rows_paste(item_list, num_before)
+        self.insert_items(item_list)
+
+    # @pyqtSlot(list)
+    def insert_items(self, item_list):
+        self.rows_paste(item_list, self.rowCount())
         self.setCurrentCell(self.rowCount() - 1, 1)
         self.resizeColumnToContents(1)
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
         self.resizeRowsToContents()
-
-    # def set_data(self):
-    #     # doc_list = ReqList.read_list()   #@#@#@#@#@#@#@#@#@######################
-    #     doc_num = len(doc_list)
-    #     self.setRowCount(doc_num)
-    #     for i in range(doc_num):
-    #         item_code = QTableWidgetItem(doc_list[i]['code'])
-    #         # item_code.setFlags(item_code.flags() ^ Qt.ItemIsEditable)
-    #         item_title = QTableWidgetItem(doc_list[i]['title'])
-    #         item_title.setFlags(item_title.flags() ^ Qt.ItemIsEditable)
-    #         self.setItem(i, 0, item_code)
-    #         self.setItem(i, 1, item_title)
-    #         self.setItem(i, 2, QTableWidgetItem(''))
-    #         # self.setItem(i, 2, QTableWidgetItem(doc_list[i]['option']))
-    #         # self.setItem(i, 3, QTableWidgetItem(doc_list[i]['find']))
-    #         # self.setItem(i, 4, QTableWidgetItem(doc_list[i]['replace']))
-    #         # self.setItem(i, 5, QTableWidgetItem(doc_list[i]['summary']))
-    #         # self.setItem(i, 6, QTableWidgetItem(doc_list[i]['error']))
-    #
-
 
     @pyqtSlot(str)
     def insert_edit_num(self, edit_num):
@@ -933,12 +923,7 @@ class TableDoc(TableEnhanced):
         self.setItem(row_insert, 0, QTableWidgetItem(f'#{edit_num}'))
         self.setItem(row_insert, 1, QTableWidgetItem(f'💡 편집사항 #{edit_num} 💡'))
         self.setItem(row_insert, 2, QTableWidgetItem(''))
-
-    # def get_codes_all(self):
-    #     code_list = []
-    #     for r in range(self.rowCount()):
-    #         code_list.append(self.item(r, 0))
-    #     return code_list
+        self.resizeColumnToContents(1)
 
     def dedup(self, x):
         # return dict.fromkeys(x)
@@ -950,10 +935,6 @@ class TableEdit(TableEnhanced):
 
     def __init__(self):
         super().__init__()
-
-        self.initUI()
-
-    def initUI(self):
         self.setColumnCount(5)
         self.setHorizontalHeaderLabels(['순', '1', '2', '3', '내용'])
         self.verticalHeader().setVisible(False)
@@ -968,12 +949,11 @@ class TableEdit(TableEnhanced):
         if e.key() == Qt.Key_Insert:
             self.sig_insert.emit(self.item(self.currentRow(), 0).text())
 
-    # def get_edit_codes_all(self):
-    #     code_list = []
-    #     for r in range(self.rowCount()):
-    #         code_list.append({'num':self.item(r, 0), 1:self.item(r, 1), 2:self.item(r, 2), 3:self.item(r, 3),
-    #                           'text':self.item(r, 4)})
-    #     return code_list
+    def insert_items(self, item_list):
+        self.rows_paste(item_list, self.rowCount())
+        # self.setCurrentCell(self.rowCount() - 1, 1)
+        self.resizeColumnsToContents()
+        self.resizeRowsToContents()
 
 
 class TabMicro(QWidget):
@@ -981,11 +961,8 @@ class TabMicro(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.initUI()
-
-    def initUI(self):
         label_info = QLabel('언젠가 예정')
-        web_view = WebView()
+        # web_view = WebView()
         box_v = QVBoxLayout()
         box_v.addWidget(label_info)
         # box_v.addWidget(web_view)
@@ -1000,8 +977,10 @@ class WebView(QWebEngineView):
 
 # ==========
 
-def write_csv(file_name, field, dict_list):
-    with open(file_name, 'a', encoding='utf-8', newline='') as csv_file:
+def write_csv(file_name, option, field, dict_list):
+    with open(file_name, option, encoding='utf-8', newline='') as csv_file:
+        if option == 'w':
+            csv.DictWriter(csv_file, field).writeheader()
         writer = csv.DictWriter(csv_file, field)
         for dict_line in dict_list:
             writer.writerow(dict_line)
@@ -1009,8 +988,8 @@ def write_csv(file_name, field, dict_list):
 
 def read_csv(file_name):
     lists = []
-    with open(file_name, 'r', encoding='utf-8', newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
+    with open(file_name, 'r', encoding='utf-8', newline='') as csv_file:
+        reader = csv.DictReader(csv_file)
         for row in reader:
             dict_row = dict(row)
             lists.append(dict_row)
@@ -1025,39 +1004,14 @@ def check_setting():
         with open('config.ini', 'w', encoding='utf-8') as configfile:
             config.write(configfile)
     if not os.path.isfile('doc_list.csv'):  # 최초 생성
-        with open('doc_list.csv', 'w', encoding='utf-8', newline='') as csvfile:
-            csv.DictWriter(csvfile, LIST_FIELD).writeheader()
+        with open('doc_list.csv', 'w', encoding='utf-8', newline='') as csv_file:
+            csv.DictWriter(csv_file, LIST_FIELD).writeheader()
     if not os.path.isfile('edit_log.csv'):  # 최초 생성
-        with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csvfile:
-            csv.DictWriter(csvfile, LOG_FIELD).writeheader()
-            # ['code', 'title', 'option', 'find', 'replace', 'summary', 'time', 'rev', 'error']
-
+        with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csv_file:
+            csv.DictWriter(csv_file, LOG_FIELD).writeheader()
 
 if __name__ == '__main__':
     check_setting()
-
-    # test_find = input('뭘 찾아서')
-    # test_find = ''
-    # test_replace = input('뭘 바꾸고')
-    # test_replace = 'abcdefg'
-    # test_option = input('어떻게')
-    # test_option = 2
-    # test_summary = ''
-    # if test_option:
-
-    '''
-    start_t = time.time()
-
-    test_req = Req()
-    test_req.login()
-    test_req.iterate(read_list())
-        # do_post()
-        # do_get_xref()
-        # get_cat(test_code)
-
-    end_t = time.time()
-    print(end_t - start_t)
-    '''
     app = QApplication(sys.argv)
     win = MainWindow()
     sys.exit(app.exec_())
