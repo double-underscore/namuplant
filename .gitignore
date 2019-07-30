@@ -3,3 +3,4 @@ venv/
 memo*.py
 *.ini
 *.csv
+*.exe
