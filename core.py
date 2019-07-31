@@ -3,7 +3,6 @@ import os
 import re
 import configparser
 import time
-import webbrowser
 import csv
 import winsound
 import requests
@@ -13,7 +12,7 @@ import pyperclip
 import keyboard
 import mouse
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel
 from PyQt5.QtCore import *
 #  QUrl
 from PyQt5.QtWebEngineWidgets import QWebEngineView
@@ -27,8 +26,6 @@ class Session(QObject):
 
     def __init__(self):  # 반복 필요 없는 것
         super().__init__()
-        # self.ddos_dialog = CheckDdos()
-        # self.sig_is_ddos_checked.connect(self.receive_checked)
         self.is_checked = False
         self.config = configparser.ConfigParser()
         self.config.read('config.ini', encoding='utf-8')
@@ -37,8 +34,6 @@ class Session(QObject):
         self.ID = self.config['login']['ID']
         self.PW = self.config['login']['PW']
         self.DELAY = float(self.config['setting']['DELAY'])
-        # self.jar = requests.cookies.RequestsCookieJar()
-        # self.jar.set('umi', self.UMI, domain='namu.wiki')
         self.URL_LOGIN = 'https://namu.wiki/member/login'
 
     def login(self):
@@ -58,7 +53,7 @@ class Session(QObject):
 
     def ddos_check(self, funcs, url, **kwargs):
         while True:
-            if 'file' in kwargs:
+            if 'files' in kwargs:
                 r = funcs(url, headers=kwargs['headers'], cookies=kwargs['cookies'], data=kwargs['data'],
                           files=kwargs['files'])
             elif 'data' in kwargs:
@@ -73,9 +68,7 @@ class Session(QObject):
                     self.is_checked = False
                     self.sig_check_ddos.emit(self)
                     while not self.is_checked:
-                        time.sleep(0.5)
-                    # webbrowser.open('https://namu.wiki/404')
-                    # input('비정상적인 트래픽 감지. 캡차 해결 후 아무 키나 입력')
+                        time.sleep(1)
                     continue
                 else:
                     return soup
@@ -108,21 +101,21 @@ class ReqPost(Session):
             doc_text = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
             identifier = soup.find(attrs={'name': 'identifier'})['value']
             if 'm:' + self.ID == identifier:
-                pass
-                # print('yes!') # 아니면 중단
+                print('some error')
             # 변경
-            doc_some = self.find_replace(doc_text, edit_list)  # 0 텍스트 1 요약
+            doc_some = self.find_replace(doc_text, edit_list, parse.unquote(doc_code))  # 0 텍스트 1 요약
             # 포0
-            soup = self.ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies)  # 포0
-            if self.is_captcha(soup):
+            soup = self.ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url),
+                                   cookies=self.s.cookies)  # 포0
+            if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
                 return {'rerun': True}
             else:
                 token = soup.find(attrs={'name': 'token'})['value']
                 # 포1
-                multidata = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': doc_some[0],
-                             'log': doc_some[1], 'agree': 'Y'}
+                multi_data = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': doc_some[0],
+                              'log': doc_some[1], 'agree': 'Y'}
                 soup = self.ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies,
-                                  data=multidata, files={'file': None})  # 포1
+                                       data=multi_data, files={'file': None})  # 포1
                 # 오류메시지
                 alert = soup.select('.alert-danger')
                 if alert:  # 편집기 오류 메시지
@@ -135,36 +128,10 @@ class ReqPost(Session):
                 'rev': baserev, 'error': error_log}
 
     @classmethod
-    def find_replace(cls, text, edit_list, title=''):
-        find_temp = ''
-        summary = ''
-        option_temp = ''
-        for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
-            if edit[1] == '모두':  # 문서 내 모든 텍스트
-                if edit[2] == '찾기':
-                    option_temp = edit[3]
-                    find_temp = edit[4]
-                elif edit[2] == '바꾸기':
-                    if option_temp == '일반':
-                        text = text.replace(find_temp, edit[4])
-                    elif option_temp == '정규식':
-                        text = re.sub(find_temp, edit[4], text)
-                elif edit[2] == '넣기':
-                    if edit[3] == '맨 앞':  # 맨 앞
-                        text = f'{edit[4]}\n{text}'
-                    elif edit[3] == '맨 뒤':  # 맨 뒤
-                        text = f'{text}\n{edit[4]}'
-            elif edit[1] == '요약':  # 편집요약
-                summary = edit[4]
-            elif edit[1] == '복구':  # 복구 옵션
-                pass
-        return [text, summary]
-
-    @classmethod
     def is_captcha(cls, soup):
         element = soup.select('#recaptcha')
         if element:
-            return True  # 캡챠 활성화됨
+            return True  # 편집창 캡차 활성화됨
         else:
             return False
 
@@ -186,6 +153,117 @@ class ReqPost(Session):
         else:
             return False
 
+    @classmethod
+    def find_replace(cls, text, edit_list, title=''):
+        find_temp = ''
+        summary = ''
+        option_temp = ''
+        for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
+            if edit[1] == '일반':  # 문서 내 모든 텍스트
+                if edit[2] == '찾기':
+                    option_temp = edit[3]
+                    find_temp = edit[4]
+                elif edit[2] == '바꾸기':
+                    if option_temp == '일반':
+                        text = text.replace(find_temp, edit[4])
+                    elif option_temp == '정규식':
+                        text = re.sub(find_temp, edit[4], text)
+                elif edit[2] == '넣기':
+                    if edit[3] == '맨 앞':  # 맨 앞
+                        text = f'{edit[4]}\n{text}'
+                    elif edit[3] == '맨 뒤':  # 맨 뒤
+                        text = f'{text}\n{edit[4]}'
+            elif edit[1] == '기타':
+                pass
+            elif edit[1] == '요약':  # 편집요약
+                summary = edit[4]
+            elif edit[1] == '복구':  # 복구 옵션
+                pass
+        return [text, summary]
+
+    @classmethod
+    def convert_title_hangul(cls, title):
+        t = ord(title[0])
+        j = ''
+        if 44032 <= t < 45208:
+            j = 'ㄱ'
+        elif 45208 <= t < 45796:
+            j = 'ㄴ'
+        elif 45796 <= t < 46972:
+            j = 'ㄷ'
+        elif 46972 <= t < 47560:
+            j = 'ㄹ'
+        elif 47560 <= t < 48148:
+            j = 'ㅁ'
+        elif 48148 <= t < 49324:
+            j = 'ㅂ'
+        elif 49324 <= t < 50500:
+            j = 'ㅅ'
+        elif 50500 <= t < 51088:
+            j = 'ㅇ'
+        elif 51088 <= t < 52264:
+            j = 'ㅈ'
+        elif 52264 <= t < 52852:
+            j = 'ㅊ'
+        elif 52852 <= t < 53440:
+            j = 'ㅋ'
+        elif 53440 <= t < 54028:
+            j = 'ㅌ'
+        elif 54028 <= t < 54616:
+            j = 'ㅍ'
+        elif 54616 <= t < 55204:
+            j = 'ㅎ'
+        return j
+
+    def upload(self, file_dir, doc_name, edit_list):
+        doc_url = 'https://namu.wiki/Upload'
+        data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '', 'lic': '제한적 이용', 'cat': ''}
+        summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
+        for edit in edit_list:
+            if edit[1] == '파일':
+                if edit[2] == '본문':
+                    if edit[3] == '출처':
+                        data['cite'] = edit[4]
+                    elif edit[3] == '날짜':
+                        data['date'] = edit[4]
+                    elif edit[3] == '저작자':
+                        data['author'] = edit[4]
+                    elif edit[3] == '기타':
+                        data['etc'] = edit[4]
+                    elif edit[3] == '설명':
+                        data['explain'] = edit[4]
+                elif edit[2] == '분류':
+                    data['cat'] = edit[4]
+                elif edit[2] == '라이선스':
+                    data['lic'] = edit[4]
+            elif edit[1] == '요약':
+                summary = edit[4]
+        text = f'[include(틀:이미지 라이선스/{data["lic"]})]\n[[분류:{data["cat"]}]]' \
+               f'\n[목차]\n\n== 기본 정보 ==\n|| 출처 || {data["cite"]} ||\n|| 날짜 || {data["date"]} ||' \
+               f'\n|| 저작자 || {data["author"]} ||\n|| 저작권 || {data["lic"]} ||\n|| 기타 || {data["etc"]} ||' \
+               f'\n\n== 이미지 설명 ==\n{data["explain"]}'
+        multi_data = {'baserev': '0', 'identifier': f'm:{self.ID}', 'document': doc_name, 'log': summary, 'text': text}
+        with open(file_dir, 'rb') as f:
+            soup = self.ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies,
+                                   data=multi_data, files={'file': f})
+        alert = soup.select('.alert-danger')
+        if alert:  # 편집기 오류 메시지
+            winsound.Beep(500, 50)
+            error_log = alert[0].strong.next_sibling.strip()
+        else:  # 성공
+            print('UPLOAD success')
+            error_log = ''
+        return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                'rev': '0', 'error': error_log}
+
+    @classmethod
+    def is_file_exist(cls, soup):
+        element = soup.select('article > div > div > a')
+        if element:
+            if element[0].text == '[더보기]':
+                return True
+        return False
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -199,16 +277,16 @@ class MainWindow(QMainWindow):
         self.setGeometry(960, 30, 960, 1020)  # X Y 너비 높이
         self.setWindowTitle('Actinidia')
         self.setWindowIcon(QIcon('icon.png'))
-        # self.statusBar().showMessage('Ready')
-
-        test_action = QAction(QIcon('icon.png'), 'aaaa', self)
-        test_action.triggered.connect(self.test_act)
-        test_action.setShortcut('Ctrl + Q')
-
+        # 액션
+        act_test = QAction(QIcon('icon.png'), '실험', self)
+        act_test.triggered.connect(self.action_test)
+        act_image = QAction('이미지 업로드', self)
+        act_image.triggered.connect(self.action_image)
+        # 메뉴
         menu_bar = self.menuBar()
-        # menu_bar.setNativeMenuBar(False)
         menu_file = menu_bar.addMenu('&File')
-        menu_file.addAction(test_action)
+        menu_file.addAction(act_test)
+        menu_file.addAction(act_image)
 
         self.read_list_csv()
         self.show()
@@ -217,12 +295,11 @@ class MainWindow(QMainWindow):
         lists = read_csv('doc_list.csv')
         doc_to_insert = []
         edit_to_insert = []
-        num = 1
         order_done = set()
         t_m = self.main_widget.tab_macro
         for i in range(len(lists)):
             order_t = lists[i]['code']
-            if '#' in order_t or '$' in order_t:  # 편집 지시자
+            if order_t[0] == '#' or order_t[0] == '$':  # 편집 지시자
                 order = int(order_t[1:])
                 if order in order_done:
                     if lists[i]['opt1']:  # 선두 아닌 일반
@@ -234,7 +311,7 @@ class MainWindow(QMainWindow):
                     order_done.add(order)
                     edit_to_insert.append(
                         [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['edit']])
-                    if '#' in order_t:  # 지시자 있는 선두
+                    if order_t[0] == '#':  # 지시자 있는 선두
                         doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
             else:  # 문서
                 doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
@@ -253,7 +330,7 @@ class MainWindow(QMainWindow):
                 if order not in order_done:
                     for edit in edits[order - 1]:  # 아예 처음
                         to_write.append({'code': docs[i][0], 'title': docs[i][1],
-                                        'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
+                                         'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
                     order_done.add(order)
                 else:  # 중복
                     to_write.append({'code': docs[i][0], 'title': docs[i][1],
@@ -274,14 +351,21 @@ class MainWindow(QMainWindow):
         self.write_list_csv()
         print('finished..')
 
-    def test_act(self):
+    def action_test(self):
         print('aaaa')
+
+    def action_image(self):
+        name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './', '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
+        self.main_widget.tab_macro.table_doc.insert_items(
+            [[f'@{n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}',
+              f'{n[n.rfind("/") + 1:]}'] for n in name_list])
+
 
 class CheckDdos(QDialog):
 
     def __init__(self):
         super().__init__()
-        self.label = QLabel('비정상트래픽 갬-쥐')
+        self.label = QLabel('reCAPTCHA 해결 후 완료 버튼을 눌러주세요.')
         self.browser = QWebEngineView()
         self.btn = QPushButton('완료')
         self.btn.clicked.connect(self.accept)
@@ -292,7 +376,7 @@ class CheckDdos(QDialog):
         box_v.addWidget(self.btn)
         self.setLayout(box_v)
         # self.setWindowModality(Qt.ApplicationModal)
-        self.setGeometry(960, 30, 480, 500)
+        self.setGeometry(960, 30, 480, 600)
 
 
 class MainWidget(QWidget):
@@ -324,9 +408,9 @@ class MainWidget(QWidget):
         self.setLayout(box_v)
 
         self.ddos_dialog = CheckDdos()
-        self.tab_macro.req_get.sig_check_ddos.connect(self.open_ddos_dialog)
-        self.tab_macro.obj_macro.sig_check_ddos.connect(self.open_ddos_dialog)
-        # self.tab_macro.raw_preview.sig_check_ddos.connect(self.open_ddos_dialog)
+        self.tab_macro.req_get.sig_check_ddos.connect(self.show_ddos_dialog)
+        self.tab_macro.obj_macro.sig_check_ddos.connect(self.show_ddos_dialog)
+        # self.tab_macro.raw_preview.sig_check_ddos.connect(self.show_ddos_dialog)
 
         # self.sig_is_ddos_checked_get.connect(self.tab_macro.req_get.receive_checked)
         # self.sig_is_ddos_checked_macro.connect(self.tab_macro.obj_macro.receive_checked)
@@ -337,7 +421,7 @@ class MainWidget(QWidget):
         self.main_label.setText(t)
 
     @pyqtSlot(object)
-    def open_ddos_dialog(self, obj):
+    def show_ddos_dialog(self, obj):
         self.ddos_dialog.browser.load(QUrl('https://namu.wiki/404'))
         ddd = self.ddos_dialog.exec_()
         if ddd == QDialog.Accepted:
@@ -368,20 +452,26 @@ class TabMacro(QWidget):
         self.spin_1.setMinimum(1)
         self.spin_1.setStyleSheet('font: 11pt')
         self.combo_opt1 = QComboBox()
-        self.combo_opt1_text = ['모두', '요약', '복구']
+        self.combo_opt1_text = ['일반', '파일', '기타', '요약', '복구']
         self.combo_opt1.addItems(self.combo_opt1_text)
         self.combo_opt1.setStyleSheet('font: 11pt')
         self.combo_opt2 = QComboBox()
-        self.combo_opt2_text = ['찾기', '바꾸기', '넣기']
-        self.combo_opt2.addItems(self.combo_opt2_text)
+        self.combo_opt2_1_text = ['찾기', '바꾸기', '넣기']
+        self.combo_opt2_2_text = ['본문', '라이선스', '분류']
+        self.combo_opt2.addItems(self.combo_opt2_1_text)
         self.combo_opt2.setStyleSheet('font: 11pt')
         self.combo_opt3 = QComboBox()
-        self.combo_opt3_1_text = ['일반', '정규식']
-        self.combo_opt3_3_text = ['맨 앞', '맨 뒤']
-        self.combo_opt3.addItems(self.combo_opt3_1_text)
+        self.combo_opt3_1_1_text = ['일반', '정규식']
+        self.combo_opt3_1_3_text = ['맨 앞', '맨 뒤']
+        self.combo_opt3_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
+        self.image_text = self.combo_image()
+        self.combo_opt3_2_2_text = self.image_text[0]  # 라이선스
+        self.combo_opt3_2_3_text = self.image_text[1]  # 파일 분류
+        self.combo_opt3.addItems(self.combo_opt3_1_1_text)
         self.combo_opt3.setStyleSheet('font: 11pt')
-        self.combo_opt1.currentIndexChanged.connect(self.combo_opt1_change)
-        self.combo_opt2.currentIndexChanged.connect(self.combo_opt2_change)
+        self.combo_opt1.currentTextChanged.connect(self.combo_opt1_change)
+        self.combo_opt2.currentTextChanged.connect(self.combo_opt2_change)
+        self.combo_opt3.currentTextChanged.connect(self.combo_opt3_change)
         self.line_input = QLineEdit()
         self.line_input.setStyleSheet('font: 11pt \'Segoe UI\'')
         self.line_input.returnPressed.connect(self.add_to_edit)
@@ -393,9 +483,6 @@ class TabMacro(QWidget):
         self.combo_get_option = QComboBox(self)
         self.combo_get_option.addItems(['1개', '역링크', '분류'])
         self.combo_get_option.setStyleSheet('font: 11pt')
-        self.btn_test = QPushButton('test')
-        # self.btn_test.clicked.connect(self.aaa)
-        self.dos = CheckDdos()
         # last row: main work
         self.combo_speed = QComboBox(self)
         self.combo_speed.addItems(['고속', '저속'])
@@ -437,14 +524,12 @@ class TabMacro(QWidget):
 
         box_h2.addWidget(self.combo_get_activate)
         box_h2.addWidget(self.combo_get_option)
-        box_h2.addWidget(self.btn_test)
-        box_h2.addStretch(4)
+        box_h2.addStretch(5)
         box_h2.addWidget(self.combo_speed)
         box_h2.addWidget(self.btn_do)
         box_h2.addWidget(self.btn_pause)
         box_h2.setStretchFactor(self.combo_get_activate, 1)
         box_h2.setStretchFactor(self.combo_get_option, 1)
-        box_h2.setStretchFactor(self.btn_test, 1)
         box_h2.setStretchFactor(self.combo_speed, 1)
         box_h2.setStretchFactor(self.btn_do, 1)
         box_h2.setStretchFactor(self.btn_pause, 1)
@@ -455,6 +540,101 @@ class TabMacro(QWidget):
 
         self.setLayout(box_v)
         self.init_req()
+
+    @pyqtSlot(str)
+    def combo_opt1_change(self, t):
+        if t == '일반':  # 일반
+            self.combo_opt2.setEnabled(True)
+            self.combo_opt3.setEnabled(True)
+            self.combo_opt2.clear()
+            self.combo_opt2.addItems(self.combo_opt2_1_text)
+        elif t == '파일':  # 파일
+            self.combo_opt2.setEnabled(True)
+            self.combo_opt3.setEnabled(True)
+            self.combo_opt2.clear()
+            self.combo_opt2.addItems(self.combo_opt2_2_text)
+        elif t == '기타' or t == '요약' or t == '복구':
+            self.combo_opt2.setEnabled(False)
+            self.combo_opt3.setEnabled(False)
+            self.combo_opt2.clear()
+            self.combo_opt3.clear()
+
+    @pyqtSlot(str)
+    def combo_opt2_change(self, t):
+        if t == '찾기' or t == '바꾸기':
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(self.combo_opt3_1_1_text)
+            if t == '찾기':
+                self.combo_opt3.setEnabled(True)
+            elif t == '바꾸기':
+                self.combo_opt3.setEnabled(False)
+        elif t == '넣기':
+            self.combo_opt3.setEnabled(True)
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(self.combo_opt3_1_3_text)
+        elif t == '본문':
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(self.combo_opt3_2_1_text)
+            self.line_input.clear()
+        elif t == '라이선스':
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(self.combo_opt3_2_2_text)
+        elif t == '분류':
+            self.combo_opt3.clear()
+            self.combo_opt3.addItems(self.combo_opt3_2_3_text)
+
+    @pyqtSlot(str)
+    def combo_opt3_change(self, t):
+        opt2 = self.combo_opt2.currentText()
+        if opt2 == '라이선스' or opt2 == '분류':
+            self.line_input.setText(t)
+
+    @classmethod
+    def combo_image(cls):
+        s = Session()
+        soup = s.ddos_check(requests.get, 'https://namu.wiki/Upload')
+        lic = [t.text for t in soup.select('#licenseSelect > option')]
+        lic.insert(0, lic.pop(-1))
+        cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
+        return [lic, cat]
+
+    @pyqtSlot()
+    def add_to_edit(self):
+        # 값 추출
+        opt1 = self.combo_opt1.currentText()
+        if self.combo_opt2.isEnabled():
+            opt2 = self.combo_opt2.currentText()
+        else:
+            opt2 = ''
+        if self.combo_opt3.isEnabled():
+            if opt2 == '라이선스' or opt2 == '분류':
+                opt3 = ''
+            else:
+                opt3 = self.combo_opt3.currentText()
+        else:
+            opt3 = ''
+        self.table_edit.insert_items([[str(self.spin_1.value()), opt1, opt2, opt3, self.line_input.text()]])
+        # 입력 후
+        self.line_input.clear()
+        if opt1 == '일반':
+            if opt2 == '바꾸기':
+                self.combo_opt2.setCurrentText('찾기')
+            elif opt2 == '찾기':
+                self.combo_opt2.setCurrentText('바꾸기')
+
+    @pyqtSlot(str)
+    def str_to_main(self, t):
+        self.sig_main_label.emit(t)
+
+    @classmethod
+    def edit_list_rearrange(cls, lists):  # 이중 리스트를 삼중 리스트로 변환
+        edit_list = []
+        for edit in lists:
+            order = int(edit[0])
+            while len(edit_list) < order:
+                edit_list.append([])
+            edit_list[order - 1].append(edit)
+        return edit_list
 
     def init_req(self):
         # thread get_click
@@ -483,8 +663,6 @@ class TabMacro(QWidget):
 
     @pyqtSlot()
     def thread_quit(self):
-        aaa = self.th_macro.isRunning()
-        bbb = self.th_get.isRunning()
         if self.th_macro.isRunning():
             self.obj_macro.is_quit = True
         elif self.th_get.isRunning():
@@ -522,73 +700,6 @@ class TabMacro(QWidget):
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
 
-    @pyqtSlot(int)
-    def combo_opt1_change(self, i):
-        if i == 0:  # 모두
-            self.combo_opt2.setEnabled(True)
-            self.combo_opt3.setEnabled(True)
-        elif i == 1 or 2:  # 요약, 되돌리기
-            self.combo_opt2.setEnabled(False)
-            self.combo_opt3.setEnabled(False)
-
-    @pyqtSlot(int)
-    def combo_opt2_change(self, i):
-        opt3 = self.combo_opt3.currentText()
-        if i == 0 or i == 1:
-            if opt3 in self.combo_opt3_3_text:
-                self.combo_opt3.clear()
-                self.combo_opt3.addItems(self.combo_opt3_1_text)
-            if i == 0:  # 찾
-                self.combo_opt3.setEnabled(True)
-            elif i == 1:  # 바
-                self.combo_opt3.setEnabled(False)
-        elif i == 2:  # 넣기
-            self.combo_opt3.setEnabled(True)
-            self.combo_opt3.clear()
-            self.combo_opt3.addItems(self.combo_opt3_3_text)
-
-    @pyqtSlot()
-    def add_to_edit(self):
-        # 값 추출
-        opt1 = self.combo_opt1.currentText()
-        if self.combo_opt2.isEnabled():
-            opt2 = self.combo_opt2.currentText()
-        else:
-            opt2 = ''
-        if self.combo_opt3.isEnabled():
-            opt3 = self.combo_opt3.currentText()
-        else:
-            opt3 = ''
-
-        self.table_edit.insert_items([[str(self.spin_1.value()), opt1, opt2, opt3, self.line_input.text()]])
-
-        # 입력 후
-        self.line_input.clear()
-        if opt1 == self.combo_opt1_text[0]:
-            if opt2 == self.combo_opt2_text[1]:  # 바꾸기
-                self.combo_opt2.setCurrentIndex(0)
-            elif opt2 == self.combo_opt2_text[0]:  # 찾기
-                self.combo_opt2.setCurrentIndex(1)
-
-        # item0.setFlags(item0.flags() ^ Qt.ItemIsEditable)  # ^은 빼기 |은 더하기
-        # item1.setFlags(item1.flags() ^ Qt.ItemIsEditable)
-        # item2.setFlags(item2.flags() ^ Qt.ItemIsEditable)
-        # item3.setFlags(item3.flags() ^ Qt.ItemIsEditable)
-
-    @pyqtSlot(str)
-    def str_to_main(self, t):
-        self.sig_main_label.emit(t)
-
-    @classmethod
-    def edit_list_rearrange(cls, lists):  # 이중 리스트를 삼중 리스트로 변환
-        edit_list = []
-        for edit in lists:
-            order = int(edit[0])
-            while len(edit_list) < order:
-                edit_list.append([])
-            edit_list[order - 1].append(edit)
-        return edit_list
-
 
 class ReqGet(Session):
     send_code_list = pyqtSignal(list)
@@ -599,7 +710,6 @@ class ReqGet(Session):
         super().__init__()
         self.s = requests.Session()
         self.is_quit = False
-        # mouse.on_right_click(self.get_click)
 
     def work(self):
         code = self.get_url()
@@ -612,7 +722,7 @@ class ReqGet(Session):
                 codes = self.get_xref(code)
             elif self.option == 2:  # 분류
                 codes = self.get_cat(code)
-                
+
             self.send_code_list.emit(codes[0])  # code list
             self.label_text.emit(codes[1])  # label
         else:
@@ -684,7 +794,6 @@ class ReqGet(Session):
                     break
                 else:
                     added = added[added.find('&from'):].replace('\'', '%27')  # '만 인코딩이 안 되어 있음
-                    # re.sub('\?namespace=.*?(&from.*?)$', '\g<1>', aaa)
         return [list_ref, f'\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.']
 
     def get_cat(self, doc_code):
@@ -733,7 +842,7 @@ class ReqGet(Session):
                     else:
                         break
         return [list_cat, f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.']
-    
+
 
 class Iterate(ReqPost):
     label_text = pyqtSignal(str)
@@ -754,6 +863,7 @@ class Iterate(ReqPost):
         deleted = 0
         deleted_temp = 0
         t1 = time.time()
+        total = len(self.doc_list)
 
         if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
             self.label_text.emit('작업을 시작할 수 없습니다. 목록을 확인해주세요.')
@@ -769,7 +879,7 @@ class Iterate(ReqPost):
                 if self.is_quit:  # 정지 버튼 눌려있으면 중단
                     self.label_text.emit('작업이 정지되었습니다.')
                     break
-                if '#' in self.doc_list[i][0]:  # 편집 지시자
+                if self.doc_list[i][0][0] == '#':  # 편집 지시자
                     if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
                         self.doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
                         deleted += 1
@@ -785,18 +895,20 @@ class Iterate(ReqPost):
                                                    'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3],
                                                    'edit': edit[4], 'time': '', 'rev': '', 'error': ''})
                     write_csv('edit_log.csv', 'a', LOG_FIELD, edit_temp_to_write)
-                elif '^' in self.doc_list[i][0]:  # 중단자
+                elif self.doc_list[i][0][0] == '^':  # 중단자
                     self.label_text.emit('작업이 중단되었습니다.')
                     self.doc_remove.emit(i - deleted)
                     break
-                else:  # 문서
+                else:  # 문서, 파일
                     if i > 0:  # 목록 처음이 편집 지시자가 아닌 경우만
-                        label = f'( {i + 1} / {len(self.doc_list)} ) {self.doc_list[i][1]}'
+                        label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
                         self.label_text.emit(label)
                         while True:
-                            posted = self.post(self.doc_list[i][0], edit_temp)  # 포스트 실시
-                            if posted['rerun']:  # 리캡챠 발생
-                                # self.label_text.emit('reCAPTCHA 감지되었습니다.')
+                            if self.doc_list[i][0][0] == '@':  # 파일. 0번열의 0번째 문자가 @
+                                posted = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], edit_temp)
+                            else:  # 문서
+                                posted = self.post(self.doc_list[i][0], edit_temp)  # 포스트 실시
+                            if posted['rerun']:  # 편집창 리캡챠 발생
                                 self.login()
                             else:
                                 if is_delay:  # 저속 옵션
@@ -918,13 +1030,11 @@ class TableEnhanced(QTableWidget):
         return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
 
     def rows_paste(self, copied_list, row_to_paste):
-        start = time.time()
         copied_list.reverse()
         for i in range(len(copied_list)):
             self.insertRow(row_to_paste)
             for c in range(self.columnCount()):
                 self.setItem(row_to_paste, c, QTableWidgetItem(copied_list[i][c]))
-        print(time.time() - start)
 
     def rows_move(self, where_to):
         self.setUpdatesEnabled(False)
@@ -934,7 +1044,7 @@ class TableEnhanced(QTableWidget):
         items = self.rows_copy(rows_selected)
         # 일단 지우고
         self.rows_delete(rows_selected)
-        # 어디로 가야 하나
+        # 이동할 위치
         if where_to == 1:  # 한 칸 위로
             if rows_selected[0] == 0:  # 첫 줄이었으면
                 row_where_to = 0
@@ -971,9 +1081,7 @@ class TableDoc(TableEnhanced):
         self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
         self.horizontalScrollBar().setVisible(True)
         self.hideColumn(0)
-        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # self.setSortingEnabled(True)
-        # self.set_data()
+        # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
@@ -1049,24 +1157,26 @@ class TableEdit(TableEnhanced):
             self.sig_insert.emit(self.item(self.currentRow(), 0).text())
 
     def insert_items(self, item_list):
-        self.rows_paste(item_list, self.rowCount())
+        self.rows_paste(item_list, self.rowCount())  # ?
         # self.setCurrentCell(self.rowCount() - 1, 1)
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
 
 
 class RawPreview(QTextEdit, Session):
-    
     def __init__(self):
         super().__init__()
         self.setPlaceholderText('미리보기 화면')
         self.setReadOnly(True)
-    
+
     @pyqtSlot(str)
     def receive_code(self, doc_code):
-        soup = self.ddos_check(requests.get, f'https://namu.wiki/raw/{doc_code}')
-        self.setText(soup.text)
-        
+        if doc_code[0] == '@':  # 파일
+            self.setText(doc_code[1:])
+        else:
+            soup = self.ddos_check(requests.get, f'https://namu.wiki/raw/{doc_code}')
+            self.setText(soup.text)
+
 
 class TabMicro(QWidget):
     sig_main_label = pyqtSignal(str)
@@ -1120,8 +1230,6 @@ def check_setting():
         with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csv_file:
             csv.DictWriter(csv_file, LOG_FIELD).writeheader()
 
-def test():
-    pass
 
 if __name__ == '__main__':
     check_setting()
