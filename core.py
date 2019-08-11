@@ -5,6 +5,7 @@ import configparser
 import time
 import csv
 import winsound
+import psutil
 import requests
 from bs4 import BeautifulSoup
 from urllib import parse
@@ -19,9 +20,13 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 LIST_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'edit']
 LOG_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'edit', 'time', 'rev', 'error']
+process = psutil.Process(os.getpid())
+# todo 첫 편집 시 결과 미리보기 모드
+# todo 미러 사이트를 통한 문서 필터링
+# todo 목록 중복 제거
+# todo if 편집
 
-
-class Session(QObject):
+class SeedSession(QObject):
     sig_check_ddos = pyqtSignal(object)
 
     def __init__(self):  # 반복 필요 없는 것
@@ -68,7 +73,7 @@ class Session(QObject):
                     self.is_checked = False
                     self.sig_check_ddos.emit(self)
                     while not self.is_checked:
-                        time.sleep(1)
+                        pass
                     continue
                 else:
                     return soup
@@ -84,7 +89,7 @@ class Session(QObject):
         return {'referer': url}
 
 
-class ReqPost(Session):
+class ReqPost(SeedSession):
     def __init__(self):
         super().__init__()
         # self.login()
@@ -169,10 +174,12 @@ class ReqPost(Session):
                     elif option_temp == '정규식':
                         text = re.sub(find_temp, edit[4], text)
                 elif edit[2] == '넣기':
-                    if edit[3] == '맨 앞':  # 맨 앞
+                    if edit[3] == '맨 앞':
                         text = f'{edit[4]}\n{text}'
-                    elif edit[3] == '맨 뒤':  # 맨 뒤
+                    elif edit[3] == '맨 뒤':
                         text = f'{text}\n{edit[4]}'
+                    elif edit[3] == '분류':
+                        text = re.sub('(\[\[분류:.*?\]\].*?)(\n|$)', f'\g<1>{edit[4]}\g<2>', text)
             elif edit[1] == '기타':
                 pass
             elif edit[1] == '요약':  # 편집요약
@@ -246,15 +253,18 @@ class ReqPost(Session):
         with open(file_dir, 'rb') as f:
             soup = self.ddos_check(self.s.post, doc_url, headers=self.make_header(doc_url), cookies=self.s.cookies,
                                    data=multi_data, files={'file': f})
-        alert = soup.select('.alert-danger')
-        if alert:  # 편집기 오류 메시지
-            winsound.Beep(500, 50)
-            error_log = alert[0].strong.next_sibling.strip()
-        else:  # 성공
-            print('UPLOAD success')
-            error_log = ''
-        return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                'rev': '0', 'error': error_log}
+        if self.is_captcha(soup):
+            return {'rerun': True}
+        else:
+            alert = soup.select('.alert-danger')
+            if alert:  # 편집기 오류 메시지
+                winsound.Beep(500, 50)
+                error_log = alert[0].strong.next_sibling.strip()
+            else:  # 성공
+                print('UPLOAD success')
+                error_log = ''
+            return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+                    'rev': '0', 'error': error_log}
 
     @classmethod
     def is_file_exist(cls, soup):
@@ -287,7 +297,6 @@ class MainWindow(QMainWindow):
         menu_file = menu_bar.addMenu('&File')
         menu_file.addAction(act_test)
         menu_file.addAction(act_image)
-
         self.read_list_csv()
         self.show()
 
@@ -430,10 +439,6 @@ class MainWidget(QWidget):
 
 class TabMacro(QWidget):
     sig_main_label = pyqtSignal(str)
-    send_doc_list = pyqtSignal(list)
-    send_edit_list = pyqtSignal(list)
-    send_speed = pyqtSignal(int)
-    send_get_option = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
@@ -462,7 +467,7 @@ class TabMacro(QWidget):
         self.combo_opt2.setStyleSheet('font: 11pt')
         self.combo_opt3 = QComboBox()
         self.combo_opt3_1_1_text = ['일반', '정규식']
-        self.combo_opt3_1_3_text = ['맨 앞', '맨 뒤']
+        self.combo_opt3_1_3_text = ['맨 앞', '맨 뒤', '분류']
         self.combo_opt3_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
         self.image_text = self.combo_image()
         self.combo_opt3_2_2_text = self.image_text[0]  # 라이선스
@@ -591,7 +596,7 @@ class TabMacro(QWidget):
 
     @classmethod
     def combo_image(cls):
-        s = Session()
+        s = SeedSession()
         soup = s.ddos_check(requests.get, 'https://namu.wiki/Upload')
         lic = [t.text for t in soup.select('#licenseSelect > option')]
         lic.insert(0, lic.pop(-1))
@@ -641,25 +646,21 @@ class TabMacro(QWidget):
         mouse.on_right_click(self.get_start)
         self.th_get = QThread()
         self.req_get = ReqGet()
+        self.req_get.finished.connect(self.get_finish)
+        self.req_get.label_text.connect(self.str_to_main)
         self.req_get.send_code_list.connect(self.table_doc.receive_codes)
         self.req_get.moveToThread(self.th_get)
-        self.req_get.finished.connect(self.get_finish)
         self.th_get.started.connect(self.req_get.work)
-        self.req_get.label_text.connect(self.str_to_main)
-        self.send_get_option.connect(self.req_get.get_option)
         # thread iterate
         self.th_macro = QThread()
         self.obj_macro = Iterate()
-        self.obj_macro.moveToThread(self.th_macro)
         self.obj_macro.finished.connect(self.iterate_finish)
-        self.th_macro.started.connect(self.obj_macro.work)
         self.obj_macro.label_text.connect(self.str_to_main)
         self.obj_macro.doc_set_current.connect(self.table_doc.set_current)
         self.obj_macro.doc_remove.connect(self.table_doc.removeRow)
         self.obj_macro.doc_error.connect(self.table_doc.set_error)
-        self.send_doc_list.connect(self.obj_macro.get_doc_list)
-        self.send_edit_list.connect(self.obj_macro.get_edit_list)
-        self.send_speed.connect(self.obj_macro.get_speed)
+        self.obj_macro.moveToThread(self.th_macro)
+        self.th_macro.started.connect(self.obj_macro.work)
 
     @pyqtSlot()
     def thread_quit(self):
@@ -672,9 +673,9 @@ class TabMacro(QWidget):
     @pyqtSlot()
     def get_start(self):
         if self.combo_get_activate.currentIndex() == 0:  # 우클릭 모드 ON
-            self.send_get_option.emit(self.combo_get_option.currentIndex())
             self.btn_do.setEnabled(False)
             self.btn_pause.setEnabled(True)
+            self.req_get.option = self.combo_get_option.currentIndex()
             self.th_get.start()
 
     @pyqtSlot()
@@ -686,11 +687,11 @@ class TabMacro(QWidget):
 
     @pyqtSlot()
     def iterate_start(self):
-        self.send_doc_list.emit(self.table_doc.rows_copy(range(self.table_doc.rowCount())))
-        self.send_edit_list.emit(self.edit_list_rearrange(self.table_edit.rows_copy(range(self.table_edit.rowCount()))))
-        self.send_speed.emit(self.combo_speed.currentIndex())
         self.btn_do.setEnabled(False)
         self.btn_pause.setEnabled(True)
+        self.obj_macro.doc_list = self.table_doc.rows_copy(range(self.table_doc.rowCount()))
+        self.obj_macro.edit_list = self.edit_list_rearrange(self.table_edit.rows_copy(range(self.table_edit.rowCount())))
+        self.obj_macro.index_speed = self.combo_speed.currentIndex()
         self.th_macro.start()
 
     @pyqtSlot()
@@ -701,7 +702,7 @@ class TabMacro(QWidget):
         self.btn_pause.setEnabled(False)
 
 
-class ReqGet(Session):
+class ReqGet(SeedSession):
     send_code_list = pyqtSignal(list)
     label_text = pyqtSignal(str)
     finished = pyqtSignal()
@@ -710,10 +711,12 @@ class ReqGet(Session):
         super().__init__()
         self.s = requests.Session()
         self.is_quit = False
+        self.option = 0
 
     def work(self):
         code = self.get_url()
         codes = []
+        print('self option at work', self.option)
         if code:
             if self.option == 0:  # 1개
                 code_unquote = parse.unquote(code)
@@ -721,8 +724,11 @@ class ReqGet(Session):
             elif self.option == 1:  # 역링크
                 codes = self.get_xref(code)
             elif self.option == 2:  # 분류
-                codes = self.get_cat(code)
-
+                if parse.unquote(code)[:3] == '분류:':
+                    codes = self.get_cat(code)
+                else:
+                    codes = [[], '해당 문서는 분류 문서가 아닙니다.']
+                    winsound.Beep(500, 50)
             self.send_code_list.emit(codes[0])  # code list
             self.label_text.emit(codes[1])  # label
         else:
@@ -742,10 +748,6 @@ class ReqGet(Session):
             keyboard.send('esc')
             time.sleep(0.01)
             return ''
-
-    @pyqtSlot(int)
-    def get_option(self, option):
-        self.option = option
 
     @classmethod
     def get_redirect(cls, url):
@@ -782,7 +784,7 @@ class ReqGet(Session):
                 namespace_unquote = parse.unquote(namespace)
                 self.label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
                                      f'\n{added_unquote}')
-                soup = self.ddos_check(requests.get, f'https://namu.wiki/xref/{doc_code}?namespace={namespace}{added}')
+                soup = self.ddos_check(self.s.get, f'https://namu.wiki/xref/{doc_code}?namespace={namespace}{added}')
                 titles = soup.select('div > ul > li > a')  # 목록
                 for v in titles:
                     if v.next_sibling[2:-1] != 'redirect':
@@ -856,6 +858,9 @@ class Iterate(ReqPost):
         logged_in = self.login()
         self.label_text.emit(logged_in)
         self.is_quit = False
+        self.doc_list = []
+        self.edit_list = []
+        self.index_speed = 0
 
     def work(self):
         edit_temp = []
@@ -864,7 +869,6 @@ class Iterate(ReqPost):
         deleted_temp = 0
         t1 = time.time()
         total = len(self.doc_list)
-
         if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
             self.label_text.emit('작업을 시작할 수 없습니다. 목록을 확인해주세요.')
         else:
@@ -938,31 +942,16 @@ class Iterate(ReqPost):
                     self.label_text.emit('작업이 모두 완료되었습니다.')
         self.finished.emit()
 
-    @pyqtSlot(list)
-    def get_doc_list(self, doc_list):
-        self.doc_list = doc_list
-
-    @pyqtSlot(list)
-    def get_edit_list(self, edit_list):
-        self.edit_list = edit_list
-
-    @pyqtSlot(int)
-    def get_speed(self, index):
-        self.index_speed = index
-
 
 class TableEnhanced(QTableWidget):
-    # todo 행이 많을 때 속도 저하 문제
     sig_main_label = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-
         self.setAlternatingRowColors(True)
         self.setGridStyle(Qt.DotLine)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        # self.verticalHeader().setDefaultSectionSize(23)
+        self.verticalHeader().setDefaultSectionSize(23)
         # self.verticalHeader().setSectionsClickable(False)
         self.shortcuts()
 
@@ -1026,10 +1015,11 @@ class TableEnhanced(QTableWidget):
                 self.removeRow(r - deleted)
                 deleted += 1
 
-    def rows_copy(self, rows_list):
+    def rows_copy(self, rows_list):  # paste보다 더 오래 걸림...
         return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
 
     def rows_paste(self, copied_list, row_to_paste):
+        # 가장 시간이 많이 소요되는 구간
         copied_list.reverse()
         for i in range(len(copied_list)):
             self.insertRow(row_to_paste)
@@ -1108,7 +1098,8 @@ class TableDoc(TableEnhanced):
 
     @pyqtSlot(list)
     def receive_codes(self, code_list):
-        self.insert_items([[code, parse.unquote(code), ''] for code in code_list])
+        if code_list:
+            self.insert_items([[code, parse.unquote(code), ''] for code in code_list])
 
     # @pyqtSlot(list)
     def insert_items(self, item_list):
@@ -1117,7 +1108,6 @@ class TableDoc(TableEnhanced):
         self.resizeColumnToContents(1)
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
-        self.resizeRowsToContents()
 
     @pyqtSlot(str)
     def insert_edit_num(self, edit_num):
@@ -1163,7 +1153,7 @@ class TableEdit(TableEnhanced):
         self.resizeRowsToContents()
 
 
-class RawPreview(QTextEdit, Session):
+class RawPreview(QTextEdit, SeedSession):
     def __init__(self):
         super().__init__()
         self.setPlaceholderText('미리보기 화면')
@@ -1172,10 +1162,16 @@ class RawPreview(QTextEdit, Session):
     @pyqtSlot(str)
     def receive_code(self, doc_code):
         if doc_code[0] == '@':  # 파일
-            self.setText(doc_code[1:])
+            self.setText(f'이미지 파일 경로\n{doc_code[1:]}')
+        elif doc_code[0] == '#':  # 편집 지시자
+            self.setText(f'{doc_code} 편집사항')
+        elif doc_code[0] == '^':  # 중단자
+            self.setText('중단점')
         else:
             soup = self.ddos_check(requests.get, f'https://namu.wiki/raw/{doc_code}')
-            self.setText(soup.text)
+            cat = re.findall('\[\[(분류: ?.*?)\]\]', soup.text)
+            text = f'({")(".join(cat)})\n==========\n{soup.text}'
+            self.setText(text)
 
 
 class TabMicro(QWidget):
@@ -1207,13 +1203,9 @@ def write_csv(file_name, option, field, dict_list):
 
 
 def read_csv(file_name):
-    lists = []
     with open(file_name, 'r', encoding='utf-8', newline='') as csv_file:
         reader = csv.DictReader(csv_file)
-        for row in reader:
-            dict_row = dict(row)
-            lists.append(dict_row)
-    return lists
+        return [dict(row) for row in reader]
 
 
 def check_setting():
@@ -1232,7 +1224,9 @@ def check_setting():
 
 
 if __name__ == '__main__':
+    print(process.memory_info().rss / 1024 / 1024)
     check_setting()
     app = QApplication(sys.argv)
     win = MainWindow()
+    print(process.memory_info().rss / 1024 / 1024)
     sys.exit(app.exec_())
