@@ -1,2 +1,2 @@
-# Actinidia
-~~bot for namu.wiki~~
+# namuplant
+A bot for namu.wiki
