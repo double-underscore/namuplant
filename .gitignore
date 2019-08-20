@@ -4,4 +4,6 @@ memo/
 memo*.py
 *.ini
 *.csv
+*.txt
 *.exe
+*.html

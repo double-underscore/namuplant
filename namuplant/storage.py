@@ -2,8 +2,8 @@ import os
 import csv
 import configparser
 
-LIST_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'edit']
-LOG_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'edit', 'time', 'rev', 'error']
+LIST_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
+LOG_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'opt4', 'edit', 'time', 'rev', 'error']
 
 
 def write_csv(file_name, option, field, dict_list):
@@ -33,13 +33,13 @@ def read_list_csv(file_name):
             if order in order_done:
                 if lists[i]['opt1']:  # 선두 아닌 일반
                     edit_to_insert.append(
-                        [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['edit']])
+                        [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['opt4'], lists[i]['edit']])
                 else:  # 중복 지시자
                     doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
             else:
                 order_done.add(order)
                 edit_to_insert.append(
-                    [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['edit']])
+                    [str(order), lists[i]['opt1'], lists[i]['opt2'], lists[i]['opt3'], lists[i]['opt4'], lists[i]['edit']])
                 if order_t[0] == '#':  # 지시자 있는 선두
                     doc_to_insert.append([lists[i]['code'], lists[i]['title'], ''])
         else:  # 문서
@@ -56,20 +56,20 @@ def write_list_csv(file_name, docs, edits):
             if order not in order_done:
                 for edit in edits[order - 1]:  # 아예 처음
                     to_write.append({'code': docs[i][0], 'title': docs[i][1],
-                                     'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
+                                     'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'opt4': edit[4], 'edit': edit[5]})
                 order_done.add(order)
             else:  # 중복
                 to_write.append({'code': docs[i][0], 'title': docs[i][1],
-                                 'opt1': '', 'opt2': '', 'opt3': '', 'edit': ''})
+                                 'opt1': '', 'opt2': '', 'opt3': '', 'opt4': '', 'edit': ''})
         else:  # 문서
             to_write.append({'code': docs[i][0], 'title': docs[i][1],
-                             'opt1': '', 'opt2': '', 'opt3': '', 'edit': ''})
+                             'opt1': '', 'opt2': '', 'opt3': '', 'opt4': '', 'edit': ''})
     if len(edits) > len(order_done):  # 편집 지시자 없는 edit
         for aaa in edits:
             if int(aaa[0][0]) not in order_done:
                 for edit in aaa:
                     to_write.append({'code': f'${edit[0]}', 'title': f'💡 편집사항 #{edit[0]} 💡',
-                                     'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3], 'edit': edit[4]})
+                                     'opt1': edit[1], 'opt2': edit[2], 'opt3': edit[3],  'opt4': edit[4], 'edit': edit[5]})
     write_csv(file_name, 'w', LIST_FIELD, to_write)
 
 

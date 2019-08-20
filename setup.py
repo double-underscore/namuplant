@@ -15,5 +15,6 @@ setup(
                       'beautifulsoup4',
                       'pyperclip',
                       'keyboard',
-                      'mouse']
+                      'mouse',
+                      'selenium']
 )
