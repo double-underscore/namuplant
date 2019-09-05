@@ -8,7 +8,7 @@ from urllib import parse
 import pyperclip
 import keyboard
 import difflib
-from diff_match_patch import diff_match_patch
+# from diff_match_patch import diff_match_patch
 
 import storage
 
@@ -17,6 +17,7 @@ site_url = 'https://namu.wiki'
 
 class SeedSession(QObject):
     sig_check_ddos = Signal(object)
+    sig_label_text = Signal(str)
 
     def __init__(self):  # 반복 필요 없는 것
         super().__init__()
@@ -29,10 +30,9 @@ class SeedSession(QObject):
         # todo 로그인 전에 DDOS 활성화되어 있으면 로그인 안 됨
         self.s = requests.Session()
         self.s.headers.update({'user-agent': self.CONFIG['UA']})
-        self.ddos_check(f'{site_url}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', funcs=self.s.get)
+        self.ddos_check(f'{site_url}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', 'get')
         self.s.cookies.set('umi', self.CONFIG['UMI'], domain=f'.{site_url[8:]}')
-        soup = self.ddos_check(self.URL_LOGIN, funcs=self.s.post, headers=self.make_header(self.URL_LOGIN),
-                               cookies=self.s.cookies,
+        soup = self.ddos_check(self.URL_LOGIN, 'post', cookies=self.s.cookies,
                                data={'username': self.CONFIG['ID'], 'password': self.CONFIG['PW']})
         info = soup.select('body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right >'
                            'li > div > div.dropdown-item.user-info > div > div')
@@ -41,33 +41,34 @@ class SeedSession(QObject):
         else:
             print('login FAILURE')
 
-    def ddos_check(self, url, funcs=requests.get, **kwargs):
+    def ddos_check(self, url, func, **kwargs):
+        if func == 'get':
+            func = self.s.get
+        elif func == 'post':
+            func = self.s.post
+        else:
+            return
+        # 반복 구간
         while True:
             if 'files' in kwargs:
-                r = funcs(url, headers=kwargs['headers'], cookies=kwargs['cookies'], data=kwargs['data'],
+                r = func(url, headers={'referer': url}, cookies=self.s.cookies, data=kwargs['data'],
                           files=kwargs['files'])
             elif 'data' in kwargs:
-                r = funcs(url, headers=kwargs['headers'], cookies=kwargs['cookies'], data=kwargs['data'])
-            elif 'headers' in kwargs:
-                r = funcs(url, headers=kwargs['headers'], cookies=kwargs['cookies'])
+                r = func(url, headers={'referer': url}, cookies=self.s.cookies, data=kwargs['data'])
             else:
-                r = funcs(url)
+                r = func(url, headers={'referer': url}, cookies=self.s.cookies)
             soup = BeautifulSoup(r.text, 'html.parser')
             if soup.title:
                 if soup.title.text == '비정상적인 트래픽 감지':
                     self.is_ddos_checked = False
                     self.sig_check_ddos.emit(self)
                     while not self.is_ddos_checked:
-                        time.sleep(0.5)
+                        time.sleep(0.1)
                     continue
                 else:
                     return soup
             else:  # for raw page
                 return soup
-
-    @classmethod
-    def make_header(cls, url):
-        return {'referer': url}
 
 
 class ReqPost(SeedSession):
@@ -75,58 +76,129 @@ class ReqPost(SeedSession):
 
     def __init__(self):
         super().__init__()
+        self.edit_list = []
         self.diff_done = 1
 
-    def post(self, doc_code, edit_list):
-        # self.diff_done 때문에 코드가 중구난방됨...
+    def get(self, doc_code):
         doc_url = f'{site_url}/edit/{doc_code}'
-        soup = self.ddos_check(doc_url, funcs=self.s.get, headers=self.make_header(doc_url), cookies=self.s.cookies)
-        baserev = soup.find(attrs={'name': 'baserev'})['value']
-        identifier = soup.find(attrs={'name': 'identifier'})['value']
-        if not identifier == f'm:{self.CONFIG["ID"]}':  # 로그인 안 되어 있으면 로그인
-            return {'rerun': True}
-        elif self.is_over_perm(soup):
-            error_log = '편집 권한이 없습니다.'
-        elif baserev == 0:
+        text = ''
+        error_log = ''
+        while True:
+            soup = self.ddos_check(doc_url, 'get')
+            baserev = soup.find(attrs={'name': 'baserev'})['value']
+            identifier = soup.find(attrs={'name': 'identifier'})['value']
+            if identifier == f'm:{self.CONFIG["ID"]}':  # 로그인 안 되어 있으면 로그인
+                break
+            else:
+                self.login()
+        if baserev == 0:
             error_log = '문서가 존재하지 않습니다.'
         else:
-            text_before = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
-            # 변경
-            text_after = self.find_replace(text_before, edit_list, parse.unquote(doc_code))  # 0 텍스트 1 요약
-            # 비교
-            if self.diff_done == 1 or self.diff_done == 4:
-                self.diff_done = 0
-                self.sig_view_diff.emit(self.diff_html(text_before, text_after[0]))
-                while self.diff_done == 0:
-                    time.sleep(0.5)
-            #
-            if self.diff_done == 4:
-                error_log = '해당 문서의 편집을 건너뛰었습니다.'
-            elif self.diff_done == 5:
-                error_log = '해당 문서부터 편집을 중단했습니다.'
+            if self.is_over_perm(soup):
+                error_log = '편집 권한이 없습니다.'
+            if soup.textarea.contents:
+                text = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
+
+        return {'identifier': identifier, 'baserev': baserev, 'text': text, 'error': error_log}
+
+    def diff(self, before, after):
+        if self.diff_done == 1 or self.diff_done == 4:
+            self.diff_done = 0
+            self.sig_view_diff.emit(self.diff_html(before, after))
+            while self.diff_done == 0:  # 외부에서 diff_done 결정
+                time.sleep(0.1)
+        #
+        if self.diff_done == 4:
+            error_log = '편집을 적용하지 않았습니다.'
+        elif self.diff_done == 5:
+            error_log = '편집을 중단했습니다.'
+        else:
+            error_log = ''
+        return error_log
+
+    def post(self, doc_code, data):
+        # identifier, baserev, text, error, log
+        doc_url = f'{site_url}/edit/{doc_code}'
+        while True:
+            soup = self.ddos_check(doc_url, 'post')  # 가짜 포스트
+            if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
+                self.login()
             else:
-                # 포0
-                soup = self.ddos_check(doc_url, funcs=self.s.post, headers=self.make_header(doc_url),
-                                       cookies=self.s.cookies)  # 포0
-                if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
-                    return {'rerun': True}
-                else:
-                    token = soup.find(attrs={'name': 'token'})['value']
-                    # 포1
-                    multi_data = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': text_after[0],
-                                  'log': text_after[1], 'agree': 'Y'}
-                    soup = self.ddos_check(doc_url, funcs=self.s.post, headers=self.make_header(doc_url),
-                                           cookies=self.s.cookies, data=multi_data, files={'file': None})  # 포1
-                    # 오류메시지
-                    alert = soup.select('.alert-danger')
-                    if alert:  # 편집기 오류 메시지
-                        winsound.Beep(500, 50)
-                        error_log = alert[0].strong.next_sibling.strip()
-                    else:  # 성공
-                        print('EDIT success')
-                        error_log = ''
-        return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                'rev': baserev, 'error': error_log}
+                break
+        data['token'] = soup.find(attrs={'name': 'token'})['value']
+        data['agree'] = 'Y'
+        del data['error']
+        # 진짜 포스트
+        soup = self.ddos_check(doc_url, 'post', data=data, files={'file': None})
+        # 오류메시지
+        alert = soup.select('.alert-danger')
+        if alert:  # 편집기 오류 메시지
+            winsound.Beep(500, 50)
+            error_log = alert[0].strong.next_sibling.strip()
+        else:  # 성공
+            print('EDIT success')
+            error_log = ''
+        return error_log
+
+    @classmethod
+    def post_log(cls, code, title, rev, error):
+        storage.write_csv('edit_log.csv', 'a', storage.LOG_FIELD,
+                          [{'code': code, 'title': title, 'opt1': '', 'opt2': '', 'opt3': '', 'edit': '',
+                            'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()), 'rev': rev, 'error': error}])
+
+    # def post_old(self, doc_code, edit_list):
+    #     # self.diff_done 스파게티 한 그릇 뚝딱..
+    #     doc_url = f'{site_url}/edit/{doc_code}'
+    #     soup = self.ddos_check(doc_url, 'get')
+    #     baserev = soup.find(attrs={'name': 'baserev'})['value']
+    #     identifier = soup.find(attrs={'name': 'identifier'})['value']
+    #     if not identifier == f'm:{self.CONFIG["ID"]}':  # 로그인 안 되어 있으면 로그인
+    #         return {'rerun': True}
+    #     elif self.is_over_perm(soup):
+    #         error_log = '편집 권한이 없습니다.'
+    #     elif baserev == 0:
+    #         error_log = '문서가 존재하지 않습니다.'
+    #     else:
+    #         text_before = soup.textarea.contents[0]  # soup.find(attrs={'name': 'text'}).text
+    #         # 변경
+    #         text_after = self.find_replace(text_before, edit_list, parse.unquote(doc_code))  # 0 텍스트 1 요약
+    #         # 비교
+    #         if self.diff_done == 1 or self.diff_done == 4:
+    #             self.diff_done = 0
+    #             self.sig_view_diff.emit(self.diff_html(text_before, text_after[0]))
+    #             while self.diff_done == 0:  # 외부에서 diff_done 결정
+    #                 time.sleep(0.1)
+    #         #
+    #         if self.diff_done == 4:
+    #             error_log = '편집을 건너뛰었습니다.'
+    #         elif self.diff_done == 5:
+    #             error_log = '편집을 중단했습니다.'
+    #         else:
+    #             # 포0
+    #             soup = self.ddos_check(doc_url, 'post')  # 포0
+    #             if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
+    #                 return {'rerun': True}
+    #             else:
+    #                 token = soup.find(attrs={'name': 'token'})['value']
+    #                 # 포1
+    #                 multi_data = {'token': token, 'identifier': identifier, 'baserev': baserev, 'text': text_after[0],
+    #                               'log': text_after[1], 'agree': 'Y'}
+    #
+    #                 soup = self.ddos_check(doc_url, 'post', data=multi_data, files={'file': None})  # 포1
+    #                 # 오류메시지
+    #                 alert = soup.select('.alert-danger')
+    #                 if alert:  # 편집기 오류 메시지
+    #                     winsound.Beep(500, 50)
+    #                     error_log = alert[0].strong.next_sibling.strip()
+    #                 else:  # 성공
+    #                     print('EDIT success')
+    #                     error_log = ''
+    #     return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+    #             'rev': baserev, 'error': error_log}
+
+    @Slot(int)
+    def receive_diff_done(self, i):
+        self.diff_done = i
 
     @classmethod
     def is_captcha(cls, soup):
@@ -191,6 +263,9 @@ class ReqPost(SeedSession):
                 pass
         return [text, summary]
 
+    def get_acl(self):
+        pass
+
     @classmethod
     def diff_html(cls, before, after):
         return difflib.HtmlDiff().make_file(before.splitlines(keepends=True),
@@ -210,7 +285,9 @@ class ReqPost(SeedSession):
                                  '<td class="diff_none"></td>'
                                  '<td class="diff_none"> </td><td class="diff_none">...</td>'
                                  '<td class="diff_none"></td></tr>') \
-            .replace('<td>', '<td width="45%">', 2)
+            .replace('<td>', '<td width="45%">', 2) \
+            .replace('No Differences Found', '변경 사항 없음') \
+            .replace('Legend', '색인')
 
     @classmethod
     def convert_title_hangul(cls, title):
@@ -246,6 +323,123 @@ class ReqPost(SeedSession):
             j = 'ㅎ'
         return j
 
+    @classmethod
+    def is_file_exist(cls, soup):
+        element = soup.select('article > div > div > a')
+        if element:
+            if element[0].text == '[더보기]':
+                return True
+        return False
+
+
+class Iterate(ReqPost):
+    sig_doc_remove = Signal(int)
+    sig_doc_set_current = Signal(int)
+    sig_doc_error = Signal(int, str)
+    sig_enable_pause = Signal(bool)
+    finished = Signal()
+
+    def __init__(self):
+        super().__init__()
+        # logged_in = self.login()
+        # self.sig_label_text.emit(logged_in)
+        self.is_quit = False
+        self.doc_list = []
+        self.index_speed = 0
+
+    def work(self):
+        edit_temp = []
+        edit_row, deleted, deleted_temp = 0, 0, 0
+        t1 = time.time()
+        total = len(self.doc_list)
+        if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
+            self.sig_label_text.emit('작업을 시작할 수 없습니다. 목록을 확인해주세요.')
+        else:
+            self.sig_label_text.emit('작업을 시작합니다.')
+            if self.index_speed == 0:  # 고속이면
+                is_delay = False
+            else:
+                is_delay = True
+            # 본작업 루프 시작
+            for i in range(len(self.doc_list)):  # 0 code, 1 title, 2 etc
+                self.sig_doc_set_current.emit(i - deleted)
+                if self.is_quit:  # 정지 버튼 눌려있으면 중단
+                    self.sig_label_text.emit('작업이 정지되었습니다.')
+                    break
+                if self.doc_list[i][0][0] == '#':  # 편집 지시자
+                    if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                        self.sig_doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
+                        deleted += 1
+                        deleted_temp = 0
+                    if self.diff_done == 2:  # 그룹 실행의 편집 그룹이 종료되어 초기화. 모두 실행(3)은 초기화 안 함
+                        self.diff_done = 1
+                    edit_row = i
+                    edit_num = int(self.doc_list[i][0][1:])  # 편집사항 순번
+                    self.sig_label_text.emit(f'편집사항 {edit_num}번 진행 중입니다.')
+                    edit_temp = self.edit_list[edit_num - 1]  # 순번이 1이면 0번 항목
+                    edit_temp_to_write = []
+                    for edit in edit_temp:
+                        edit_temp_to_write.append({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
+                                                   'opt1': edit[1], 'opt2': edit[3], 'opt3': edit[4],
+                                                   'edit': edit[5], 'time': '', 'rev': '', 'error': ''})
+                    storage.write_csv('edit_log.csv', 'a', storage.LOG_FIELD, edit_temp_to_write)
+                elif self.doc_list[i][0][0] == '^':  # 중단자
+                    self.sig_label_text.emit('작업이 중단되었습니다.')
+                    self.sig_doc_remove.emit(i - deleted)
+                    break
+                else:  # 문서, 파일
+                    if i > 0:  # 목록 처음이 편집 지시자가 아닌 경우만
+                        label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
+                        self.sig_label_text.emit(label)
+
+                        if self.doc_list[i][0][0] == '@':  # 파일. 0번열의 0번째 문자가 @
+                            post_error = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], edit_temp)
+                        else:  # 문서
+                            post_error = self.edit(self.doc_list[i][0], edit_temp)  # 포스트
+                        if is_delay:  # 저속 옵션
+                            t2 = time.time()
+                            waiting = self.CONFIG['DELAY'] - (t2 - t1)
+                            if waiting > 0:
+                                time.sleep(waiting)
+                            t1 = time.time()
+                        if post_error:  # 에러 발생
+                            self.sig_label_text.emit(f'{label}\n{post_error}')
+                            self.sig_doc_error.emit(i - deleted, post_error)
+                        else:  # 정상
+                            self.sig_doc_remove.emit(i - deleted)
+                            deleted += 1
+                            deleted_temp += 1
+                        if self.diff_done == 5:
+                            self.sig_label_text.emit('편집 비교 중 작업을 중단하였습니다.')
+                            break
+                    else:
+                        self.sig_label_text.emit('편집 사항이 존재하지 않습니다.')
+                        break
+                if i == len(self.doc_list) - 1:  # 마지막 행
+                    if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                        self.sig_doc_remove.emit(edit_row)  # 더는 쓸모 없으니까 지시자 지움
+                    self.sig_label_text.emit('작업이 모두 완료되었습니다.')
+        self.finished.emit()
+        
+    def edit(self, doc_code, edit_list):
+        # 획득
+        data = self.get(doc_code)  # identifier, baserev, text, error
+        if not data['error']:  # 권한 X, 문서 X
+            # 변경
+            doc_name = parse.unquote(doc_code)
+            text_after = self.find_replace(data['text'], edit_list, doc_name)  # 0 텍스트 1 요약
+            # 비교
+            self.sig_enable_pause.emit(False)
+            data['error'] = self.diff(data['text'], text_after[0])
+            self.sig_enable_pause.emit(True)
+            if not data['error']:  # 건너 뜀, 중단함
+                data['text'] = text_after[0]
+                data['log'] = text_after[1]
+                # 전송
+                data['error'] = self.post(doc_code, data)  # 서버 오류 메시지
+        self.post_log(doc_code, doc_name, data['baserev'], data['error'])
+        return data['error']
+    
     def upload(self, file_dir, doc_name, edit_list):
         doc_url = f'{site_url}/Upload'
         data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '', 'lic': '제한적 이용', 'cat': ''}
@@ -273,139 +467,118 @@ class ReqPost(SeedSession):
                f'\n[목차]\n\n== 기본 정보 ==\n|| 출처 || {data["cite"]} ||\n|| 날짜 || {data["date"]} ||' \
                f'\n|| 저작자 || {data["author"]} ||\n|| 저작권 || {data["lic"]} ||\n|| 기타 || {data["etc"]} ||' \
                f'\n\n== 이미지 설명 ==\n{data["explain"]}'
+
         multi_data = {'baserev': '0', 'identifier': f'm:{self.CONFIG["ID"]}', 'document': doc_name, 'log': summary,
                       'text': text}
         with open(file_dir, 'rb') as f:
-            soup = self.ddos_check(doc_url, funcs=self.s.post, headers=self.make_header(doc_url),
-                                   cookies=self.s.cookies, data=multi_data, files={'file': f})
-        if self.is_captcha(soup):
-            return {'rerun': True}
-        else:
-            alert = soup.select('.alert-danger')
-            if alert:  # 편집기 오류 메시지
-                winsound.Beep(500, 50)
-                error_log = alert[0].strong.next_sibling.strip()
-            else:  # 성공
-                print('UPLOAD success')
-                error_log = ''
-            return {'rerun': False, 'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-                    'rev': '0', 'error': error_log}
-
-    @classmethod
-    def is_file_exist(cls, soup):
-        element = soup.select('article > div > div > a')
-        if element:
-            if element[0].text == '[더보기]':
-                return True
-        return False
+            while True:
+                soup = self.ddos_check(doc_url, 'post', data=multi_data, files={'file': f})
+                if self.is_captcha(soup):
+                    self.login()
+                else:
+                    break
+        alert = soup.select('.alert-danger')
+        if alert:  # 편집기 오류 메시지
+            winsound.Beep(500, 50)
+            error_log = alert[0].strong.next_sibling.strip()
+        else:  # 성공
+            print('UPLOAD success')
+            error_log = ''
+        self.post_log(file_dir, doc_name, '0', error_log)
+        return error_log
 
 
-class Iterate(ReqPost):
-    label_text = Signal(str)
-    doc_remove = Signal(int)
-    doc_set_current = Signal(int)
-    doc_error = Signal(int, str)
+class Micro(ReqPost):
+    sig_do_edit = Signal(str)
+    sig_text_view = Signal(str, bool)
+    sig_text_edit = Signal(str)
+    sig_enable_iterate = Signal(bool)
     finished = Signal()
 
     def __init__(self):
         super().__init__()
-        # logged_in = self.login()
-        # self.label_text.emit(logged_in)
-        self.is_quit = False
-        self.doc_list = []
-        self.edit_list = []
-        self.index_speed = 0
+        self.data = {}
+        self.edits = []
+
+        self.doc_code = ''
+        self.text = ''
+        self.do_post = False
+        self.do_cancel = False
+        self.mode = 0
 
     def work(self):
-        edit_temp = []
-        edit_row = 0
-        deleted = 0
-        deleted_temp = 0
-        t1 = time.time()
-        total = len(self.doc_list)
-        if len(self.doc_list) == 0 or len(self.edit_list) == 0:  # 값이 없음
-            self.label_text.emit('작업을 시작할 수 없습니다. 목록을 확인해주세요.')
-        else:
-            self.label_text.emit('작업을 시작합니다.')
-            if self.index_speed == 0:  # 고속이면
-                is_delay = False
-            else:
-                is_delay = True
-            # 본작업 루프 시작
-            for i in range(len(self.doc_list)):  # 0 code, 1 title, 2 etc
-                self.doc_set_current.emit(i - deleted)
-                if self.is_quit:  # 정지 버튼 눌려있으면 중단
-                    self.label_text.emit('작업이 정지되었습니다.')
-                    break
-                if self.doc_list[i][0][0] == '#':  # 편집 지시자
-                    if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                        self.doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
-                        deleted += 1
-                        deleted_temp = 0
-                    if self.diff_done == 2:  # 그룹 실행의 편집 그룹이 종료되어 초기화. 모두 실행(3)은 초기화 안 함
-                        self.diff_done = 1
-                    edit_row = i
-                    edit_num = int(self.doc_list[i][0][1:])  # 편집사항 순번
-                    self.label_text.emit(f'편집사항 {edit_num}번 진행 중입니다.')
-                    edit_temp = self.edit_list[edit_num - 1]  # 순번이 1이면 0번 항목
-                    edit_temp_to_write = []
-                    for edit in edit_temp:
-                        edit_temp_to_write.append({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
-                                                   'opt1': edit[1], 'opt2': edit[3], 'opt3': edit[4],
-                                                   'edit': edit[5], 'time': '', 'rev': '', 'error': ''})
-                    storage.write_csv('edit_log.csv', 'a', storage.LOG_FIELD, edit_temp_to_write)
-                elif self.doc_list[i][0][0] == '^':  # 중단자
-                    self.label_text.emit('작업이 중단되었습니다.')
-                    self.doc_remove.emit(i - deleted)
-                    break
-                else:  # 문서, 파일
-                    if i > 0:  # 목록 처음이 편집 지시자가 아닌 경우만
-                        label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
-                        self.label_text.emit(label)
-                        while True:
-                            if self.doc_list[i][0][0] == '@':  # 파일. 0번열의 0번째 문자가 @
-                                posted = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], edit_temp)
-                            else:  # 문서
-                                posted = self.post(self.doc_list[i][0], edit_temp)  # 포스트
-                            if posted['rerun']:  # 편집창 리캡챠 발생
-                                self.login()
-                            else:
-                                if is_delay:  # 저속 옵션
-                                    t2 = time.time()
-                                    waiting = self.CONFIG['DELAY'] - (t2 - t1)
-                                    if waiting > 0:
-                                        time.sleep(waiting)
-                                    t1 = time.time()
-                                if posted['error']:  # 에러 발생
-                                    self.label_text.emit(f'{label}\n{posted["error"]}')
-                                    self.doc_error.emit(i - deleted, posted['error'])
-                                else:  # 정상
-                                    self.doc_remove.emit(i - deleted)
-                                    deleted += 1
-                                    deleted_temp += 1
-                                storage.write_csv('edit_log.csv', 'a', storage.LOG_FIELD,
-                                                  [{'code': self.doc_list[i][0],
-                                                    'title': self.doc_list[i][1],
-                                                    'opt1': '', 'opt2': '', 'opt3': '', 'edit': '',
-                                                    'time': posted['time'], 'rev': posted['rev'],
-                                                    'error': posted['error']}])
-                                break
-                        if self.diff_done == 5:
-                            self.label_text.emit('편집 비교 중 작업을 중단하였습니다.')
-                            break
-                    else:
-                        self.label_text.emit('편집 사항이 존재하지 않습니다.')
-                        break
-                if i == len(self.doc_list) - 1:  # 마지막 행
-                    if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                        self.doc_remove.emit(edit_row)  # 더는 쓸모 없으니까 지시자 지움
-                    self.label_text.emit('작업이 모두 완료되었습니다.')
+        if self.mode == 0:
+            self.view()
+        elif self.mode == 1:
+            self.edit()
+
+    def view(self):
+        editable = False
+        doc_name = parse.unquote(self.doc_code)
+        if self.doc_code[0] == '@':  # 파일
+            label = f'\'{doc_name}\'의 파일 경로를 열람중입니다.'
+            text = f'이미지 파일 경로\n{self.doc_code[1:]}'
+        elif self.doc_code[0] == '#':  # 편집 지시자
+            label = f'{self.doc_code} 편집사항을 열람 중입니다.'
+            text = f'{self.doc_code} 편집사항'
+        elif self.doc_code[0] == '^':  # 중단자
+            label = '중단점을 열람 중입니다.'
+            text = '중단점'
+        else:  # 문서
+            data = self.get(self.doc_code)
+            if data['text']:
+                label = f'\'{doc_name}\' 문서를 열람 중입니다.'
+                text = data['text']
+                editable = True
+            else:  # 문서 존재 X
+                label = f'{doc_name}\n{data["error"]}'
+                text = '존재하지 않는 문서입니다.'
+        self.sig_label_text.emit(label)
+        self.sig_text_view.emit(text, editable)
         self.finished.emit()
+
+    def edit(self):
+        # todo 편집 루프 해소
+        # todo 비교 시 취소하면 편집 종료되는 문제
+
+        self.do_post = False
+        self.do_cancel = False
+        data = self.get(self.doc_code)
+        doc_name = parse.unquote(self.doc_code)
+        if data['error']:  # 권한 X
+            pass
+        else:
+            self.sig_enable_iterate.emit(False)
+            self.sig_text_edit.emit(data['text'])
+            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집 중입니다.')
+            while not self.do_post:
+                time.sleep(0.5)
+            if self.do_cancel:
+                data['error'] = '편집을 취소했습니다.'
+            else:
+                # 비교
+                data['error'] = self.diff(data['text'], self.text)
+                if not data['error']:
+                    data['text'] = self.text
+                    data['log'] = ''
+                    # 전송
+                    data['error'] = self.post(self.doc_code, data)
+                self.post_log(self.doc_code, doc_name, data['baserev'], data['error'])
+            self.sig_enable_iterate.emit(True)
+        self.finished.emit()
+
+    def apply(self, text_before, edit_list):
+        text_after = self.find_replace(text_before, edit_list)[0]
+        return text_after
+        # error = self.diff(text_before, text_after)
+        # if error:
+        #     return text_before
+        # else:
+        #     return text_after
 
 
 class ReqGet(SeedSession):
     send_code_list = Signal(list)
-    label_text = Signal(str)
     finished = Signal()
 
     def __init__(self):
@@ -430,9 +603,9 @@ class ReqGet(SeedSession):
                     codes = [[], '해당 문서는 분류 문서가 아닙니다.']
                     winsound.Beep(500, 50)
             self.send_code_list.emit(codes[0])  # code list
-            self.label_text.emit(codes[1])  # label
+            self.sig_label_text.emit(codes[1])  # label
         else:
-            self.label_text.emit('올바른 URL을 찾을 수 없습니다.')
+            self.sig_label_text.emit('올바른 URL을 찾을 수 없습니다.')
             winsound.Beep(500, 50)
         self.finished.emit()
 
@@ -469,7 +642,7 @@ class ReqGet(SeedSession):
         doc_name = parse.unquote(doc_code)
         list_space = []
         list_ref = []
-        soup = self.ddos_check(f'{site_url}/xref/{doc_code}', funcs=self.s.get)
+        soup = self.ddos_check(f'{site_url}/xref/{doc_code}', 'get')
         spaces = soup.select(
             'body > div.content-wrapper > article > fieldset > form > div:nth-child(1) > select:nth-child(2) > option')
         for v in spaces:
@@ -482,9 +655,9 @@ class ReqGet(SeedSession):
                                       f'\n\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.']
                 added_unquote = parse.unquote(added[6:])
                 namespace_unquote = parse.unquote(namespace)
-                self.label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
+                self.sig_label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
                                      f'\n{added_unquote}')
-                soup = self.ddos_check(f'{site_url}/xref/{doc_code}?namespace={namespace}{added}', funcs=self.s.get)
+                soup = self.ddos_check(f'{site_url}/xref/{doc_code}?namespace={namespace}{added}', 'get')
                 titles = soup.select('div > ul > li > a')  # 목록
                 for v in titles:
                     if v.next_sibling[2:-1] != 'redirect':
@@ -505,7 +678,7 @@ class ReqGet(SeedSession):
         list_cat = []
         btn_done = 0
         added = ''
-        soup = self.ddos_check(f'{site_url}/w/{doc_code}', funcs=self.s.get)
+        soup = self.ddos_check(f'{site_url}/w/{doc_code}', 'get')
         h2s = soup.select('h2.wiki-heading')
         divs = soup.select('body > div.content-wrapper > article > div.wiki-content.clearfix > div')
         for i in range(len(h2s)):
@@ -523,7 +696,7 @@ class ReqGet(SeedSession):
             elif is_list:  # 목록
                 namespace = h2s[n]
                 n += 1
-                self.label_text.emit(f'{doc_name}의 하위 {namespace} 가져오는 중... ( +{total} )\n')
+                self.sig_label_text.emit(f'{doc_name}의 하위 {namespace} 가져오는 중... ( +{total} )\n')
                 for v in is_list:  # 첫번째 페이지 획득
                     list_cat.append(v.get('href')[3:])
                     total += 1
@@ -533,8 +706,8 @@ class ReqGet(SeedSession):
                                           f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.']
                     if added:
                         added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
-                        self.label_text.emit(f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
-                        soup_new = self.ddos_check(f'{site_url}/w/{doc_code}{added}', funcs=self.s.get)
+                        self.sig_label_text.emit(f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
+                        soup_new = self.ddos_check(f'{site_url}/w/{doc_code}{added}', 'get')
                         divs_new = soup_new.select('body > div.content-wrapper >'
                                                    'article > div.wiki-content.clearfix > div')
                         for v in divs_new[i].select('div > ul > li > a'):
@@ -544,3 +717,4 @@ class ReqGet(SeedSession):
                     else:
                         break
         return [list_cat, f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.']
+
