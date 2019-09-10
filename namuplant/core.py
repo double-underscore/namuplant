@@ -341,7 +341,7 @@ class Iterate(ReqPost):
                             self.sig_label_text.emit('편집 비교 중 작업을 중단하였습니다.')
                             break
                     else:
-                        self.sig_label_text.emit('편집 사항이 존재하지 않습니다.')
+                        self.sig_label_text.emit('첫 행에 편집 사항이 지정되어있지 않습니다.')
                         break
                 if i == len(self.doc_list) - 1:  # 마지막 행
                     if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
@@ -573,14 +573,11 @@ class ReqGet(SeedSession):
     def get_xref(self, doc_code):
         total = 0
         doc_name = parse.unquote(doc_code)
-        list_space = []
         list_ref = []
         soup = self.ddos_check(f'{site_url}/xref/{doc_code}', 'get')
         spaces = soup.select(
             'body > div.content-wrapper > article > fieldset > form > div:nth-child(1) > select:nth-child(2) > option')
-        for v in spaces:
-            list_space.append(parse.quote(v.get('value')))
-        for namespace in list_space:
+        for namespace in [parse.quote(space.get('value')) for space in spaces]:
             added = ''
             while True:
                 if self.is_quit:

@@ -4,6 +4,7 @@ import re
 import time
 import psutil
 from urllib import parse
+import pyperclip
 import mouse
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
@@ -12,6 +13,7 @@ from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QStatusBar
 from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, Slot, Signal
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
+
 from namuplant import core, storage
 
 process = psutil.Process(os.getpid())
@@ -58,21 +60,20 @@ class MainWindow(QMainWindow):
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
 
-
-
         self.read_doc_list_csv()
         self.show()
 
     def read_doc_list_csv(self):
         docs, edits = storage.read_list_csv('doc_list.csv')
         t_m = self.main_widget.tab_macro
-        t_m.doc_inventory.table_doc.insert_items(docs, [False, False, False])
-        t_m.edit_editor.table_edit.insert_items(edits)
+        t_m.doc_inventory.table_doc.rows_insert(docs)
+        t_m.doc_inventory.table_doc.after_insert()
+        t_m.edit_editor.table_edit.rows_insert(edits)
         # t_m.doc_inventory.table_doc.setcurrent
 
     def write_doc_list_csv(self):
         t_m = self.main_widget.tab_macro
-        docs = t_m.doc_inventory.table_doc.rows_copy_text(range(t_m.doc_inventory.table_doc.rowCount()))
+        docs = t_m.doc_inventory.table_doc.rows_copy_text()
         edits = t_m.edit_editor.table_edit.edits_copy()
 
         storage.write_list_csv('doc_list.csv', docs, edits)
@@ -94,11 +95,10 @@ class MainWindow(QMainWindow):
     def action_image(self):
         name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './', '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
         t_d = self.main_widget.tab_macro.doc_inventory.table_doc
-        t_d.insert_items([[f'@{n}',
+        t_d.rows_insert([[f'@{n}',
                           f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}',
-                          f'{n[n.rfind("/") + 1:]}'] for n in name_list
-                          ],
-                         [False, True, False])
+                          f'{n[n.rfind("/") + 1:]}'] for n in name_list],
+                        editable=[False, True, False])
 
 
 class CheckDdos(QDialog):
@@ -184,19 +184,23 @@ class TabMacro(QWidget):
         self.combo_get_activate.addItems(['右 ON', '右 OFF'])
         self.combo_get_activate.setCurrentIndex(1)
         self.combo_get_activate.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.combo_get_activate.setMinimumWidth(70)
         self.combo_get_activate.setMaximumWidth(100)
         # last row: main work
         self.combo_speed = QComboBox(self)
         self.combo_speed.addItems(['고속', '저속'])
         self.combo_speed.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.combo_speed.setMinimumWidth(70)
         self.combo_speed.setMaximumWidth(100)
         self.combo_speed.currentIndexChanged.connect(self.iterate_speed_change)
         # todo 스피드 옵션 이터레이트 즉시 반응 - 작동 확인 필요
         self.btn_do = QPushButton('시작', self)
         self.btn_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_do.setMinimumWidth(72)
         self.btn_do.setMaximumWidth(100)
         self.btn_pause = QPushButton('정지', self)
         self.btn_pause.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_pause.setMinimumWidth(72)
         self.btn_pause.setMaximumWidth(100)
         self.btn_pause.setEnabled(False)
         # splitter left
@@ -325,8 +329,7 @@ class TabMacro(QWidget):
     def iterate_start(self):
         self.btn_do.setEnabled(False)
         self.btn_pause.setEnabled(True)
-        self.iterate_post.doc_list = self.doc_inventory.table_doc.rows_copy_text(
-            range(self.doc_inventory.table_doc.rowCount()))
+        self.iterate_post.doc_list = self.doc_inventory.table_doc.rows_copy_text()
         self.iterate_post.edit_list = self.edit_editor.table_edit.edits_copy()
         self.iterate_post.index_speed = self.combo_speed.currentIndex()
         self.iterate_post.diff_done = 1
@@ -402,9 +405,21 @@ class TableEnhanced(QTableWidget):
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.verticalHeader().setDefaultSectionSize(23)
         self.horizontalHeader().setMinimumSectionSize(30)
-        # self.verticalHeader().setSectionsClickable(False)
+        self.verticalHeader().setSectionsClickable(False)
 
         self.shortcuts()
+
+    def shortcuts(self):
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Up'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self._move_up)  # 한 칸 위로
+        move_down = QShortcut(QKeySequence('Ctrl+Shift+Down'), self, context=Qt.WidgetShortcut)
+        move_down.activated.connect(self._move_down)  # 한 칸 아래로
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Left'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self._move_top)  # 맨 위로
+        move_up = QShortcut(QKeySequence('Ctrl+Shift+Right'), self, context=Qt.WidgetShortcut)
+        move_up.activated.connect(self._move_bottom)  # 맨 아래로
+        copy_sheet = QShortcut(QKeySequence('Ctrl+C'), self, context=Qt.WidgetShortcut)
+        copy_sheet.activated.connect(self.copy_sheet)
 
     def keyPressEvent(self, e):
         # todo 목록에 있는 거 지우면 미리보기도 없애기
@@ -412,129 +427,114 @@ class TableEnhanced(QTableWidget):
 
         if e.key() == Qt.Key_Return:
             self.sig_main_label.emit(self.currentItem().text())
-
         elif e.key() == Qt.Key_Home:
-            self.test()
-
+            self.copy_sheet()
         elif e.key() == Qt.Key_Delete:  # 지우기
-            self.setUpdatesEnabled(False)
-            col_origin = self.currentColumn()
-            rows_selected = self.rows_selected()
-            if rows_selected:
-                # self.sig_deleted_rows.emit(rows_selected)
-                self.rows_delete(rows_selected)
-                pos_after = rows_selected[-1] - len(rows_selected)
-                added = 0 if self.rowCount() - 1 == pos_after else 1
-                self.setCurrentCell(pos_after + added, col_origin)
-            self.setUpdatesEnabled(True)
-
-    def shortcuts(self):
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Up'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.method_move_up)  # 한 칸 위로
-        move_down = QShortcut(QKeySequence('Ctrl+Shift+Down'), self, context=Qt.WidgetShortcut)
-        move_down.activated.connect(self.method_move_down)  # 한 칸 아래로
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Left'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.method_move_top)  # 맨 위로
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Right'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.method_move_bottom)  # 맨 아래로
-
-    def method_move_up(self):
-        self.rows_move(1)
-
-    def method_move_down(self):
-        self.rows_move(2)
-
-    def method_move_top(self):
-        self.rows_move(3)
-
-    def method_move_bottom(self):
-        self.rows_move(4)
-
-    def rows_selected(self):
-        col_origin = self.currentColumn()
-        if self.selectedItems():
-            return sorted([i.row() for i in self.selectedItems() if i.column() == col_origin])
-
-    def rows_delete(self, rows_list):
-        deleted = 0
-        if rows_list:
-            for r in rows_list:
-                self.removeRow(r - deleted)
-                deleted += 1
-
-    def rows_copy_text(self, rows_list):  # table item -> text
-        return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
-
-    def rows_copy_item(self, rows_list):  # table item -> table item
-        return [[self.item(r, c) for c in range(self.columnCount())] for r in rows_list]
-
-    def rows_paste(self, copied_list, row_to_paste):  # to be deprecated
-        copied_list.reverse()
-        for i in range(len(copied_list)):
-            self.insertRow(row_to_paste)
-            for c in range(self.columnCount()):
-                self.setItem(row_to_paste, c, QTableWidgetItem(copied_list[i][c]))
+            self.rows_delete(self._rows_selected())
 
     def test(self):
-        # a = [self.item(0, 0), self.item(0, 1), self.item(0, 2)]
-        # self.insertRow(self.rowCount())
-        # for i in range(len(a)):
-        #     self.setItem(self.rowCount() - 1, i, a[i])
-        s = self.item(0, 1)
-        self.setItem(1, 1, QTableWidgetItem(s))
+        print(self.item(0, 1).flags())
 
-    def rows_paste_item(self, copied_item_list, row_to_paste):  # table item -> table item
-        copied_item_list.reverse()
-        for i in range(len(copied_item_list)):
-            self.insertRow(row_to_paste)
-            for c in range(self.columnCount()):
-                self.setItem(row_to_paste, c, copied_item_list[i][c])
+    def _move_up(self):
+        sel = self._rows_selected()
+        if sel:
+            if not sel[0] == 0:
+                self.rows_paste(sel[0] - 1, self.rows_cut(sel, up=True), up=True)
 
-    def rows_insert(self, copied_text_list, col_editable, row_to_insert):  # text -> table item
-        # todo 테이블 열별 editable
-        copied_text_list.reverse()
-        for i in range(len(copied_text_list)):
-            self.insertRow(row_to_insert)
-            for c in range(self.columnCount()):
-                item = QTableWidgetItem(copied_text_list[i][c])
-                if not col_editable[c]:  # false면 플래그 제거
-                    item.setFlags(item.flags() ^ Qt.ItemIsEditable)
-                self.setItem(row_to_insert, c, item)
+    def _move_down(self):
+        sel = self._rows_selected()
+        if sel:
+            if not sel[-1] == self.rowCount() - 1:
+                self.rows_paste(sel[-1] + 2, self.rows_cut(sel, up=False), up=False)
 
-    def rows_move(self, where_to):
-        self.setUpdatesEnabled(False)
+    def _move_top(self):
+        if self._rows_selected():
+            self.rows_paste(0, self.rows_cut(self._rows_selected(), up=True), up=True)
+
+    def _move_bottom(self):
+        if self._rows_selected():
+            self.rows_paste(self.rowCount(), self.rows_cut(self._rows_selected(), up=False), up=False)
+
+    def _rows_selected(self):
+        if self.selectedItems():
+            return sorted(list({i.row() for i in self.selectedItems()}))
+
+    def rows_cut(self, rows_list, up):  # generator, table item -> table item
+        rows_list.reverse()
+        i = 0
+        for r in rows_list:
+            yield [self.item(r + i, c) for c in range(self.columnCount())]
+            i += 1 if up else 0
+            self.removeRow(r + i)  # 지우기
+
+    def rows_paste(self, where_to, rows_gen, up):
+        i, n = 0, 0
         col_origin = self.currentColumn()
-        rows_selected = self.rows_selected()
-        row_where_to = 0
-        items = self.rows_copy_text(rows_selected)
-        # 일단 지우고
-        self.rows_delete(rows_selected)
-        # 이동할 위치
-        if where_to == 1:  # 한 칸 위로
-            if rows_selected[0] == 0:  # 첫 줄이었으면
-                row_where_to = 0
-            else:
-                row_where_to = rows_selected[0] - 1
-        elif where_to == 2:  # 한 칸 아래로
-            row_last = rows_selected[-1]
-            if row_last - len(rows_selected) == self.rowCount() - 1:  # 마지막 줄이었으면
-                row_where_to = self.rowCount()  # - 1 - deletes['deleted']
-            else:
-                row_where_to = row_last + 2 - len(rows_selected)
-        elif where_to == 3:  # 맨 위로
-            row_where_to = 0
-        elif where_to == 4:  # 맨 아래로
-            row_where_to = self.rowCount()
-        # 새로운 current cell과 selection
-        self.rows_paste(items, row_where_to)
-        if where_to == 1 or where_to == 3:
-            self.setCurrentCell(row_where_to, col_origin)
-        elif where_to == 2 or where_to == 4:
-            self.setCurrentCell(row_where_to + len(rows_selected) - 1, col_origin)
-        range_to_select = QTableWidgetSelectionRange(row_where_to, 0,
-                                                     row_where_to + len(rows_selected) - 1, self.columnCount() - 1)
-        self.setRangeSelected(range_to_select, True)
-        self.setUpdatesEnabled(True)
+        for row in rows_gen:
+            self.insertRow(where_to + i)
+            n += 1
+            for c in range(len(row)):
+                self.setItem(where_to + i, c, QTableWidgetItem(row[c]))
+            i -= 0 if up else 1
+        # current & selection
+        if up:
+            rng = QTableWidgetSelectionRange(where_to, 0, where_to + n - 1, self.columnCount() - 1)
+        else:
+            where_to -= 1
+            rng = QTableWidgetSelectionRange(where_to - n + 1, 0, where_to, self.columnCount() - 1)
+        self.setCurrentCell(where_to, col_origin)
+        self.setRangeSelected(rng, True)
+
+    def rows_delete(self, rows_list):
+        col_origin = self.currentColumn()
+        rows_list.reverse()
+        for r in rows_list:
+            self.removeRow(r)
+        pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
+        pos_after += 0 if self.rowCount() - 1 == pos_after else 1
+        self.setCurrentCell(pos_after, col_origin)
+
+    def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None):  # text -> table item
+        if where_to is None:
+            where_to = self.rowCount()
+        if editable is None:
+            editable = self.col_editable
+        if clickable is None:
+            clickable = self.col_clickable
+        text_list_2d.reverse()
+        for i in range(len(text_list_2d)):
+            self.insertRow(where_to)
+            for c in range(self.columnCount()):
+                item = QTableWidgetItem(text_list_2d[i][c])
+                if not editable[c]:  # false 일때 플래그 제거
+                    item.setFlags(item.flags() ^ Qt.ItemIsEditable)
+                if not clickable[c]:
+                    item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
+                self.setItem(where_to, c, item)
+        self.resizeColumnsToContents()
+
+    def rows_copy_text(self, rows_list=None):  # table item -> text
+        if rows_list is None:
+            rows_list = range(self.rowCount())
+        return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
+
+    @classmethod
+    def convert_table_to_str(cls, list_2d):  # 2d array -> text
+        return '\n'.join(['\t'.join([str(col) for col in row]) for row in list_2d])
+
+    @classmethod
+    def convert_str_to_table(cls, text):  # text -> 2d array
+        return [col.split('\t') for col in text.split('\n')]
+
+    def copy_sheet(self):
+        if self.selectedItems():
+            t = ''
+            for i in self.selectedItems():
+                if i.column() == self.columnCount() - 1:
+                    t = f'{t}{i.text()}\n'
+                else:
+                    t = f'{t}{i.text()}\t'
+            pyperclip.copy(t[:-1])
 
 
 class TableDoc(TableEnhanced):
@@ -544,18 +544,40 @@ class TableDoc(TableEnhanced):
         super().__init__()
         self.setColumnCount(3)
         self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
-        self.horizontalHeader().setVisible(False)
+        self.horizontalHeader().setStyleSheet('font: 7pt \'맑은 고딕\'')
+        self.horizontalHeader().setMinimumSectionSize(34)
         self.verticalHeader().setStyleSheet('font: 7pt \'맑은 고딕\'')
         self.horizontalScrollBar().setVisible(True)
         self.hideColumn(0)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.col_editable = (False, False, False)
+        self.col_clickable = (False, True, True)
+
+    def shortcuts(self):
+        super().shortcuts()
+        a1 = QShortcut(QKeySequence('Alt+1'), self, context=Qt.WidgetShortcut)
+        a1.activated.connect(self.insert_edit_1)
+        a2 = QShortcut(QKeySequence('Alt+2'), self, context=Qt.WidgetShortcut)
+        a2.activated.connect(self.insert_edit_2)
+        a3 = QShortcut(QKeySequence('Alt+3'), self, context=Qt.WidgetShortcut)
+        a3.activated.connect(self.insert_edit_3)
+        a4 = QShortcut(QKeySequence('Alt+4'), self, context=Qt.WidgetShortcut)
+        a4.activated.connect(self.insert_edit_4)
+        a5 = QShortcut(QKeySequence('Alt+5'), self, context=Qt.WidgetShortcut)
+        a5.activated.connect(self.insert_edit_5)
+        a6 = QShortcut(QKeySequence('Alt+6'), self, context=Qt.WidgetShortcut)
+        a6.activated.connect(self.insert_edit_6)
+        a7 = QShortcut(QKeySequence('Alt+7'), self, context=Qt.WidgetShortcut)
+        a7.activated.connect(self.insert_edit_7)
+        a8 = QShortcut(QKeySequence('Alt+8'), self, context=Qt.WidgetShortcut)
+        a8.activated.connect(self.insert_edit_8)
+        a9 = QShortcut(QKeySequence('Alt+9'), self, context=Qt.WidgetShortcut)
+        a9.activated.connect(self.insert_edit_9)
 
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
-
         if e.key() == Qt.Key_Insert:
-            r = self.currentRow()
-            self.insert_items([['^', '⌛ 정지 ⌛', '']], [False, False, False], r)
+            self.rows_insert([['^', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
 
     def mouseDoubleClickEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -565,7 +587,9 @@ class TableDoc(TableEnhanced):
 
     @Slot(int, str)
     def set_error(self, row, text):
-        self.setItem(row, 2, QTableWidgetItem(text))
+        item = QTableWidgetItem(text)
+        item.setFlags(item.flags() ^ Qt.ItemIsEditable ^ Qt.ItemIsEnabled)
+        self.setItem(row, 2, item)
         self.resizeColumnToContents(2)
 
     @Slot(int)
@@ -575,30 +599,58 @@ class TableDoc(TableEnhanced):
     @Slot(list)
     def receive_codes_get(self, code_list):  # code list 1d -> code list 2d
         if code_list:
-            self.insert_items([[code, parse.unquote(code), ''] for code in code_list],
-                              [False, False, False])
+            self.rows_insert([[code, parse.unquote(code), ''] for code in code_list])
+            self.after_insert()
+            self.setCurrentCell(self.rowCount() - 1, 1)
 
-    def insert_items(self, list_2d, col_editable, row_to_insert=0):
-        if not row_to_insert:
-            row_to_insert = self.rowCount()
-        self.rows_insert(list_2d, col_editable, row_to_insert)
-        # self.setCurrentCell(row_to_insert - 1, 1)
-        self.resizeColumnToContents(1)
+    def after_insert(self):
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
 
-    @Slot(str)
+    @Slot()
+    def insert_edit_1(self):
+        self.insert_edit_num(1)
+
+    @Slot()
+    def insert_edit_2(self):
+        self.insert_edit_num(2)
+
+    @Slot()
+    def insert_edit_3(self):
+        self.insert_edit_num(3)
+
+    @Slot()
+    def insert_edit_4(self):
+        self.insert_edit_num(4)
+
+    @Slot()
+    def insert_edit_5(self):
+        self.insert_edit_num(5)
+
+    @Slot()
+    def insert_edit_6(self):
+        self.insert_edit_num(6)
+
+    @Slot()
+    def insert_edit_7(self):
+        self.insert_edit_num(7)
+
+    @Slot()
+    def insert_edit_8(self):
+        self.insert_edit_num(8)
+
+    @Slot()
+    def insert_edit_9(self):
+        self.insert_edit_num(9)
+
+    @Slot(int)
     def insert_edit_num(self, edit_num):
-        row_insert = self.currentRow()
-        if row_insert == -1:
-            row_insert = 0
-        elif int(edit_num) == 1 and self.item(0, 0).text()[0] != '#':
-            row_insert = 0
-        self.insertRow(row_insert)
-        self.setItem(row_insert, 0, QTableWidgetItem(f'#{edit_num}'))
-        self.setItem(row_insert, 1, QTableWidgetItem(f'💡 편집사항 #{edit_num} 💡'))
-        self.setItem(row_insert, 2, QTableWidgetItem(''))
-        self.resizeColumnToContents(1)
+        where_to = self.currentRow()
+        if where_to == -1:
+            where_to = 0
+        # elif edit_num == 1 and self.item(0, 0).text()[0] != '#':
+        #     where_to = 0
+        self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
 
     @classmethod
     def dedup(cls, x):
@@ -607,7 +659,7 @@ class TableDoc(TableEnhanced):
 
 
 class TableEdit(TableEnhanced):
-    sig_insert = Signal(str)
+    sig_insert = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -616,22 +668,17 @@ class TableEdit(TableEnhanced):
         self.horizontalHeader().setVisible(False)
         self.verticalHeader().setVisible(False)
         self.resizeColumnsToContents()
-
         # self.resizeRowsToContents()
         # self.sizePolicy().setVerticalStretch(7)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.col_editable = (True, False, False, False, False, True)
+        self.col_clickable = (True, True, True, True, True, True)
 
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
 
         if e.key() == Qt.Key_Insert:
-            self.sig_insert.emit(self.item(self.currentRow(), 0).text())
-
-    def insert_items(self, item_list):
-        self.rows_paste(item_list, self.rowCount())  # ?
-        self.setCurrentCell(self.rowCount() - 1, 1)
-        self.resizeColumnsToContents()
-        self.resizeRowsToContents()
+            self.sig_insert.emit(int(self.item(self.currentRow(), 0).text()))
 
     @classmethod
     def edit_list_rearrange(cls, lists):  # 이중 리스트를 삼중 리스트로 변환
@@ -643,18 +690,18 @@ class TableEdit(TableEnhanced):
             edit_list[order - 1].append(edit)
         return edit_list
 
-    @classmethod
-    def edit_list_do_dict(cls, edit_2d):
-        list_a = []
-        for edit in edit_2d:
-            []
-        pass
+    # @classmethod
+    # def edit_list_do_dict(cls, edit_2d):
+    #     list_a = []
+    #     for edit in edit_2d:
+    #         []
+    #     pass
 
     def edits_copy(self):
-        return self.edit_list_rearrange(self.rows_copy_text(range(self.rowCount())))
+        return self.edit_list_rearrange(self.rows_copy_text())
 
     def edits_copy_one(self, pick):
-        return self.edit_list_rearrange(self.rows_copy_text(range(self.rowCount())))[pick]
+        return self.edit_list_rearrange(self.rows_copy_text())[pick]
 
 
 class DocInventory(QWidget):
@@ -1069,7 +1116,8 @@ class EditEditor(QWidget):
                 opt4 = self.combo_opt4.currentText()
         else:
             opt4 = ''
-        self.table_edit.insert_items([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
+        self.table_edit.rows_insert([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
+        self.table_edit.setCurrentCell(self.table_edit.rowCount() - 1, 1)
         # 입력 후
         self.edit_input.clear()
         if opt1 == '일반':
