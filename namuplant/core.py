@@ -401,20 +401,24 @@ class Iterate(ReqPost):
 
         multi_data = {'baserev': '0', 'identifier': f'm:{self.CONFIG["ID"]}', 'document': doc_name, 'log': summary,
                       'text': text}
-        with open(file_dir, 'rb') as f:
-            while True:
-                soup = self.ddos_check(doc_url, 'post', data=multi_data, files={'file': f})
-                if self.is_captcha(soup):
-                    self.login()
-                else:
-                    break
-        alert = soup.select('.alert-danger')
-        if alert:  # 편집기 오류 메시지
+        try:
+            with open(file_dir, 'rb') as f:
+                while True:
+                    soup = self.ddos_check(doc_url, 'post', data=multi_data, files={'file': f})
+                    if self.is_captcha(soup):
+                        self.login()
+                    else:
+                        break
+            alert = soup.select('.alert-danger')
+            if alert:  # 편집기 오류 메시지
+                winsound.Beep(500, 50)
+                error_log = alert[0].strong.next_sibling.strip()
+            else:  # 성공
+                print('UPLOAD success')
+                error_log = ''
+        except FileNotFoundError:
             winsound.Beep(500, 50)
-            error_log = alert[0].strong.next_sibling.strip()
-        else:  # 성공
-            print('UPLOAD success')
-            error_log = ''
+            error_log = '파일을 찾을 수 없습니다.'
         self.post_log(file_dir, doc_name, '0', error_log)
         return error_log
 
@@ -422,6 +426,7 @@ class Iterate(ReqPost):
 class Micro(ReqPost):
     sig_do_edit = Signal(str)
     sig_text_view = Signal(str, str, bool)
+    sig_image_view = Signal(str)
     sig_text_edit = Signal(str)
     sig_enable_iterate = Signal(bool)
     finished = Signal()
@@ -447,25 +452,28 @@ class Micro(ReqPost):
         editable = False
         doc_name = parse.unquote(self.doc_code)
         if self.doc_code[0] == '@':  # 파일
-            label = f'\'{doc_name[1:]}\'의 파일 경로를 열람중입니다.'
-            text = f'이미지 파일 경로\n{self.doc_code[1:]}'
-        elif self.doc_code[0] == '#':  # 편집 지시자
-            label = f'{doc_name[1:]}번 편집사항을 열람 중입니다.'
-            text = f'{doc_name[1:]}번 편집사항'
-        elif self.doc_code[0] == '^':  # 중단자
-            label = '중단점을 열람 중입니다.'
-            text = '중단점'
-        else:  # 문서
-            data = self.get(self.doc_code)
-            if data['text']:
-                label = f'\'{doc_name}\' 문서를 열람 중입니다.'
-                text = data['text']
-                editable = True
-            else:  # 문서 존재 X
-                label = f'\'{doc_name}\' 문서는 존재하지 않습니다.'
-                text = '존재하지 않는 문서입니다.'
+            if len(doc_name) > 50:
+                doc_name = f'...{doc_name[-50:]}'
+            label = f'\'{doc_name[1:]}\' 파일을 열람중입니다.'
+            self.sig_image_view.emit(self.doc_code[1:])
+        else:
+            if self.doc_code[0] == '#':  # 편집 지시자
+                label = f'{doc_name[1:]}번 편집사항을 열람 중입니다.'
+                text = f'{doc_name[1:]}번 편집사항'
+            elif self.doc_code[0] == '^':  # 중단자
+                label = '중단점을 열람 중입니다.'
+                text = '중단점'
+            else:  # 문서
+                data = self.get(self.doc_code)
+                if data['text']:
+                    label = f'\'{doc_name}\' 문서를 열람 중입니다.'
+                    text = data['text']
+                    editable = True
+                else:  # 문서 존재 X
+                    label = f'\'{doc_name}\' 문서는 존재하지 않습니다.'
+                    text = '존재하지 않는 문서입니다.'
+            self.sig_text_view.emit(self.doc_code, text, editable)  # todo 리비전도 넘겨주기
         self.sig_label_text.emit(label)
-        self.sig_text_view.emit(self.doc_code, text, editable)  # todo 리비전도 넘겨주기
         self.finished.emit()
 
     def edit(self):

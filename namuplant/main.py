@@ -10,7 +10,7 @@ from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QActi
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange, QFileDialog
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QStatusBar
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel
+from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QImage
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, Slot, Signal
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 
@@ -66,14 +66,14 @@ class MainWindow(QMainWindow):
     def read_doc_list_csv(self):
         docs, edits = storage.read_list_csv('doc_list.csv')
         t_m = self.main_widget.tab_macro
-        t_m.doc_inventory.table_doc.rows_insert(docs)
-        t_m.doc_inventory.table_doc.after_insert()
+        t_m.doc_board.table_doc.rows_insert(docs)
+        t_m.doc_board.table_doc.after_insert()
         t_m.edit_editor.table_edit.rows_insert(edits)
         # t_m.doc_inventory.table_doc.setcurrent
 
     def write_doc_list_csv(self):
         t_m = self.main_widget.tab_macro
-        docs = t_m.doc_inventory.table_doc.rows_copy_text()
+        docs = t_m.doc_board.table_doc.rows_copy_text()
         edits = t_m.edit_editor.table_edit.edits_copy()
 
         storage.write_list_csv('doc_list.csv', docs, edits)
@@ -94,11 +94,13 @@ class MainWindow(QMainWindow):
 
     def action_image(self):
         name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './', '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
-        t_d = self.main_widget.tab_macro.doc_inventory.table_doc
+        t_d = self.main_widget.tab_macro.doc_board.table_doc
         t_d.rows_insert([[f'@{n}',
                           f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}',
                           f'{n[n.rfind("/") + 1:]}'] for n in name_list],
                         editable=[False, True, False])
+        t_d.setCurrentCell(t_d.rowCount() - 1, 1)
+        t_d.setFocus()
 
 
 class CheckDdos(QDialog):
@@ -176,7 +178,7 @@ class TabMacro(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.doc_inventory = DocInventory()
+        self.doc_board = DocBoard()
         self.tabs_viewer = TabViewers()
         self.edit_editor = EditEditor()
         # last row: get link
@@ -210,7 +212,6 @@ class TabMacro(QWidget):
         split_v.setStretchFactor(0, 1)
         split_v.setStretchFactor(1, 1)
         split_v.setMinimumSize(200, 265)
-
         # splitter right
         split_h = QSplitter()
         split_h.setStyleSheet("""
@@ -218,10 +219,11 @@ class TabMacro(QWidget):
                 background-color: #eeeedd;
                 }
             """)
-        split_h.addWidget(self.doc_inventory)
+        split_h.addWidget(self.doc_board)
         split_h.addWidget(split_v)
         split_h.setStretchFactor(0, 1)
         split_h.setStretchFactor(1, 1)
+        split_h.splitterMoved.connect(self.split_test)
 
         # box last row
         box_last_row = QHBoxLayout()
@@ -242,10 +244,10 @@ class TabMacro(QWidget):
         box_v.setContentsMargins(2, 2, 2, 2)
         self.setLayout(box_v)
         # widget connect
-        self.doc_inventory.table_doc.sig_main_label.connect(self.str_to_main)
-        self.doc_inventory.table_doc.sig_doc_viewer.connect(self.micro_view)
-        # self.tabs_viewer.doc_viewer.sig_main_label.connect(self.str_to_main)
-        self.edit_editor.table_edit.sig_insert.connect(self.doc_inventory.table_doc.insert_edit_num)
+        self.doc_board.table_doc.sig_main_label.connect(self.str_to_main)
+        self.doc_board.table_doc.sig_doc_viewer.connect(self.micro_view)
+        self.tabs_viewer.sig_main_label.connect(self.str_to_main)
+        self.edit_editor.table_edit.sig_insert.connect(self.doc_board.table_doc.insert_edit_num)
         self.btn_do.clicked.connect(self.iterate_start)
         self.btn_pause.clicked.connect(self.thread_quit)
         # thread get_click
@@ -254,8 +256,8 @@ class TabMacro(QWidget):
         self.req_get = core.ReqGet()
         self.req_get.finished.connect(self.get_finish)
         self.req_get.sig_label_text.connect(self.str_to_main)
-        self.req_get.send_code_list.connect(self.doc_inventory.table_doc.receive_codes_get)
-        self.doc_inventory.sig_doc_code.connect(self.get_by_input)
+        self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
+        self.doc_board.sig_doc_code.connect(self.get_by_input)
         self.req_get.moveToThread(self.th_get)
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
@@ -263,9 +265,9 @@ class TabMacro(QWidget):
         self.iterate_post = core.Iterate()
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.sig_label_text.connect(self.str_to_main)
-        self.iterate_post.sig_doc_remove.connect(self.doc_inventory.table_doc.removeRow)
-        self.iterate_post.sig_doc_set_current.connect(self.doc_inventory.table_doc.set_current)
-        self.iterate_post.sig_doc_error.connect(self.doc_inventory.table_doc.set_error)
+        self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
+        self.iterate_post.sig_doc_set_current.connect(self.doc_board.table_doc.set_current)
+        self.iterate_post.sig_doc_error.connect(self.doc_board.table_doc.set_error)
         self.iterate_post.sig_view_diff.connect(self.tabs_viewer.show_diff)
         self.iterate_post.sig_enable_pause.connect(self.iterate_enable_pause)
         self.tabs_viewer.sig_diff_done.connect(self.iterate_post.receive_diff_done)
@@ -278,6 +280,7 @@ class TabMacro(QWidget):
         self.micro_post.sig_label_text.connect(self.str_to_main)
         self.micro_post.sig_text_view.connect(self.tabs_viewer.doc_viewer.set_text_view)
         self.micro_post.sig_text_edit.connect(self.tabs_viewer.doc_viewer.set_text_edit)
+        self.micro_post.sig_image_view.connect(self.tabs_viewer.show_image)
         self.micro_post.sig_enable_iterate.connect(self.micro_enable_iterate)
         self.micro_post.sig_view_diff.connect(self.tabs_viewer.show_diff_micro)
         self.tabs_viewer.sig_diff_micro_done.connect(self.micro_post.receive_diff_done)
@@ -293,6 +296,11 @@ class TabMacro(QWidget):
     def str_to_main(self, t):
         self.sig_main_label.emit(t)
 
+    @Slot(int, int)
+    def split_test(self, pos, index):
+        # print(self.doc_inventory.table_doc.)
+        print(pos, index)
+
     @Slot()
     def thread_quit(self):
         if self.th_iterate.isRunning():
@@ -307,7 +315,7 @@ class TabMacro(QWidget):
             self.req_get.mode = 1
             self.btn_do.setEnabled(False)
             self.btn_pause.setEnabled(True)
-            self.req_get.option = self.doc_inventory.combo_option.currentIndex()
+            self.req_get.option = self.doc_board.combo_option.currentIndex()
             self.th_get.start()
 
     @Slot(str)
@@ -316,7 +324,7 @@ class TabMacro(QWidget):
         self.req_get.code = code
         self.btn_do.setEnabled(False)
         self.btn_pause.setEnabled(True)
-        self.req_get.option = self.doc_inventory.combo_option.currentIndex()
+        self.req_get.option = self.doc_board.combo_option.currentIndex()
         self.th_get.start()
 
     @Slot()
@@ -330,7 +338,7 @@ class TabMacro(QWidget):
     def iterate_start(self):
         self.btn_do.setEnabled(False)
         self.btn_pause.setEnabled(True)
-        self.iterate_post.doc_list = self.doc_inventory.table_doc.rows_copy_text()
+        self.iterate_post.doc_list = self.doc_board.table_doc.rows_copy_text()
         self.iterate_post.edit_list = self.edit_editor.table_edit.edits_copy()
         self.iterate_post.index_speed = self.combo_speed.currentIndex()
         self.iterate_post.diff_done = 1
@@ -361,20 +369,20 @@ class TabMacro(QWidget):
             self.th_micro.start()
 
     @Slot()
-    def micro_edit(self):
-        self.micro_post.mode = 1
-        self.th_micro.start()
-
-    @Slot()
     def micro_close(self):
         self.tabs_viewer.doc_viewer.quit_edit(True)
         self.str_to_main('문서를 닫았습니다.')
 
     @Slot()
+    def micro_edit(self):
+        self.micro_post.mode = 1
+        self.th_micro.start()
+
+    @Slot()
     def micro_apply(self):
         edit_list = self.edit_editor.table_edit.edits_copy_one(self.tabs_viewer.doc_viewer.spin.value() - 1)
         text = self.tabs_viewer.doc_viewer.viewer.toPlainText()
-        self.tabs_viewer.doc_viewer.viewer.setText(self.micro_post.apply(text, edit_list))
+        self.tabs_viewer.doc_viewer.viewer.setPlainText(self.micro_post.apply(text, edit_list))
 
     @Slot()
     def micro_text_post(self):
@@ -623,6 +631,7 @@ class TableDoc(TableEnhanced):
         #     where_to = 0
         self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
         self.setCurrentCell(self.currentRow() - 1, 1)
+        self.setFocus()
 
     @Slot()
     def insert_edit_1(self):
@@ -712,7 +721,7 @@ class TableEdit(TableEnhanced):
         return self.edit_list_rearrange(self.rows_copy_text())[pick]
 
 
-class DocInventory(QWidget):
+class DocBoard(QWidget):
     sig_doc_code = Signal(str)
 
     def __init__(self):
@@ -765,9 +774,11 @@ class DocViewer(QWidget):
         self.combo_info.setEnabled(False)
         self.btn_edit = QPushButton('편집', self)
         self.btn_edit.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_edit.setMaximumWidth(100)
         self.btn_edit.setEnabled(False)
         self.btn_close = QPushButton('닫기', self)
         self.btn_close.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_close.setMaximumWidth(100)
         self.btn_close.setEnabled(False)
         box_tab_view.addWidget(self.combo_info)
         box_tab_view.addWidget(self.btn_close)
@@ -782,9 +793,17 @@ class DocViewer(QWidget):
         box_tab_edit = QHBoxLayout()
         self.spin = QSpinBox()
         self.spin.setMinimum(1)
+        self.spin.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.spin.setMaximumWidth(100)
         self.btn_apply = QPushButton('적용', self)
+        self.btn_apply.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_apply.setMaximumWidth(100)
         self.btn_cancel = QPushButton('취소', self)
+        self.btn_cancel.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_cancel.setMaximumWidth(100)
         self.btn_post = QPushButton('전송', self)
+        self.btn_post.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_post.setMaximumWidth(100)
         box_tab_edit.addWidget(self.spin)
         box_tab_edit.addWidget(self.btn_apply)
         box_tab_edit.addStretch(1)
@@ -798,8 +817,8 @@ class DocViewer(QWidget):
         self.tab_edit.setLayout(box_tab_edit)
         # tabs
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.tab_view, '')
-        self.tabs.addTab(self.tab_edit, '')
+        self.tabs.addTab(self.tab_view, '열람')
+        self.tabs.addTab(self.tab_edit, '편집')
         self.tabs.tabBar().hide()
         self.tabs.setMaximumHeight(24)
         self.tabs.setStyleSheet("""
@@ -810,6 +829,7 @@ class DocViewer(QWidget):
         # viewer
         self.viewer = QTextEdit()
         self.viewer.setPlaceholderText('미리보기 화면')
+        # self.viewer.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.viewer.setReadOnly(True)
         # box main
         box_v = QVBoxLayout()
@@ -829,14 +849,14 @@ class DocViewer(QWidget):
             self.combo_info.addItems(self.get_info(text))
         self.btn_edit.setEnabled(editable)
         self.btn_close.setEnabled(True)
-        self.viewer.setText(text)
+        self.viewer.setPlainText(text)
 
     @Slot(str)
     def set_text_edit(self, text):
         self.combo_info.clear()
         self.viewer.setReadOnly(False)
         self.tabs.setCurrentWidget(self.tab_edit)
-        self.viewer.setText(text)
+        self.viewer.setPlainText(text)
 
     @Slot()
     def quit_edit(self, clear):
@@ -949,7 +969,33 @@ class DiffViewer(QWidget):
         self.sig_send_diff_micro.emit(4)
 
 
+class ImgViewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.line_info = QLineEdit()
+        self.line_info.setReadOnly(True)
+        self.line_info.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.label_img = QLabel()
+        self.label_img.setBaseSize(300, 200)
+        self.label_img.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.label_img.setAlignment(Qt.AlignCenter)
+        self.btn_close = QPushButton('닫기')
+        self.btn_close.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_close.setMaximumWidth(100)
+        box_h = QHBoxLayout()
+        box_h.addWidget(self.line_info)
+        box_h.addWidget(self.btn_close)
+        box_h.setStretchFactor(self.line_info, 5)
+        box_h.setStretchFactor(self.btn_close, 1)
+        box_v = QVBoxLayout()
+        box_v.addLayout(box_h)
+        box_v.addWidget(self.label_img)
+        box_v.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(box_v)
+
+
 class TabViewers(QTabWidget):
+    sig_main_label = Signal(str)
     sig_diff_done = Signal(int)
     sig_diff_micro_done = Signal(int)
 
@@ -957,10 +1003,13 @@ class TabViewers(QTabWidget):
         super().__init__()
         self.doc_viewer = DocViewer()
         self.diff_viewer = DiffViewer()
-        self.addTab(self.doc_viewer, '  보기  ')
-        self.addTab(self.diff_viewer, '  비교  ')
+        self.img_viewer = ImgViewer()
+        self.addTab(self.doc_viewer, '보기')
+        self.addTab(self.diff_viewer, '비교')
+        self.addTab(self.img_viewer, '이미지')
         self.diff_viewer.sig_send_diff.connect(self.close_diff)
         self.diff_viewer.sig_send_diff_micro.connect(self.close_diff_micro)
+        self.img_viewer.btn_close.clicked.connect(self.close_image)
         self.tabBar().hide()
         self.setStyleSheet("""
             QTabWidget::pane {
@@ -977,7 +1026,8 @@ class TabViewers(QTabWidget):
     @Slot(str)
     def show_diff_micro(self, diff_html):
         self.diff_viewer.tabs.setCurrentWidget(self.diff_viewer.tab_micro)
-        self.diff_viewer.show_html(diff_html)
+        # self.diff_viewer.show_html(diff_html)
+        self.diff_viewer.browser.setHtml(diff_html)
         self.setCurrentWidget(self.diff_viewer)
 
     @Slot(int)
@@ -994,6 +1044,28 @@ class TabViewers(QTabWidget):
         self.diff_viewer.browser.clear()
         self.sig_diff_micro_done.emit(done)
 
+    @Slot(str)
+    def show_image(self, f):
+        self.img_viewer.btn_close.setEnabled(True)
+        pic = QPixmap(f)
+        if pic.isNull():
+            self.img_viewer.line_info.setText(f'파일을 찾을 수 없습니다.')
+            self.img_viewer.label_img.clear()
+        else:
+            self.img_viewer.line_info.setText(f)
+            self.img_viewer.line_info.setPlaceholderText('파일 경로')
+            if pic.width() < self.width() and pic.height() < self.height() - 32:
+                self.img_viewer.label_img.setPixmap(pic)
+            else:
+                self.img_viewer.label_img.setPixmap(pic.scaled(self.width(), self.height() - 32, Qt.KeepAspectRatio))
+        self.setCurrentWidget(self.img_viewer)
+
+    def close_image(self):
+        self.img_viewer.line_info.clear()
+        self.img_viewer.label_img.clear()
+        self.img_viewer.btn_close.setEnabled(False)
+        self.sig_main_label.emit('파일을 닫았습니다.')
+
 
 class EditEditor(QWidget):
     def __init__(self):
@@ -1007,18 +1079,23 @@ class EditEditor(QWidget):
         # edit options
         self.spin_1 = QSpinBox()
         self.spin_1.setMinimum(1)
+        self.spin_1.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt1 = QComboBox()
+        self.combo_opt1.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt1_text = ['일반', '파일', '기타', '요약', '복구']
         self.combo_opt1.addItems(self.combo_opt1_text)
         self.combo_opt2 = QComboBox()
+        self.combo_opt2.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt2_text = ['', 'if', 'then']
         self.combo_opt2.addItems(self.combo_opt2_text)
         self.combo_opt2.setEnabled(False)
         self.combo_opt3 = QComboBox()
+        self.combo_opt3.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt3_1_text = ['찾기', '바꾸기', '넣기']
         self.combo_opt3_2_text = ['본문', '라이선스', '분류']
         self.combo_opt3.addItems(self.combo_opt3_1_text)
         self.combo_opt4 = QComboBox()
+        self.combo_opt4.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt4_1_1_text = ['텍스트', '정규식']
         self.combo_opt4_1_3_text = ['맨 앞', '맨 뒤', '분류']
         self.combo_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
