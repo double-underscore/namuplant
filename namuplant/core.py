@@ -202,7 +202,10 @@ class ReqPost(SeedSession):
                     if option_temp == '텍스트':
                         text = text.replace(find_temp, edit[5])
                     elif option_temp == '정규식':
-                        text = re.sub(find_temp, edit[5], text)
+                        try:
+                            re.sub(find_temp, edit[5], text)
+                        except re.error:
+                            continue
                 elif edit[3] == '넣기':
                     if edit[4] == '맨 앞':
                         text = f'{edit[5]}\n{text}'
@@ -447,8 +450,8 @@ class Micro(ReqPost):
             label = f'\'{doc_name[1:]}\'의 파일 경로를 열람중입니다.'
             text = f'이미지 파일 경로\n{self.doc_code[1:]}'
         elif self.doc_code[0] == '#':  # 편집 지시자
-            label = f'{self.doc_name[1:]}번 편집사항을 열람 중입니다.'
-            text = f'{self.doc_name[1:]}번 편집사항'
+            label = f'{doc_name[1:]}번 편집사항을 열람 중입니다.'
+            text = f'{doc_name[1:]}번 편집사항'
         elif self.doc_code[0] == '^':  # 중단자
             label = '중단점을 열람 중입니다.'
             text = '중단점'

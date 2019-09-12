@@ -244,7 +244,7 @@ class TabMacro(QWidget):
         # widget connect
         self.doc_inventory.table_doc.sig_main_label.connect(self.str_to_main)
         self.doc_inventory.table_doc.sig_doc_viewer.connect(self.micro_view)
-        self.tabs_viewer.doc_viewer.sig_main_label.connect(self.str_to_main)
+        # self.tabs_viewer.doc_viewer.sig_main_label.connect(self.str_to_main)
         self.edit_editor.table_edit.sig_insert.connect(self.doc_inventory.table_doc.insert_edit_num)
         self.btn_do.clicked.connect(self.iterate_start)
         self.btn_pause.clicked.connect(self.thread_quit)
@@ -282,6 +282,7 @@ class TabMacro(QWidget):
         self.micro_post.sig_view_diff.connect(self.tabs_viewer.show_diff_micro)
         self.tabs_viewer.sig_diff_micro_done.connect(self.micro_post.receive_diff_done)
         self.tabs_viewer.doc_viewer.btn_edit.clicked.connect(self.micro_edit)
+        self.tabs_viewer.doc_viewer.btn_close.clicked.connect(self.micro_close)
         self.tabs_viewer.doc_viewer.btn_apply.clicked.connect(self.micro_apply)
         self.tabs_viewer.doc_viewer.btn_post.clicked.connect(self.micro_text_post)
         self.tabs_viewer.doc_viewer.btn_cancel.clicked.connect(self.micro_back)
@@ -365,6 +366,11 @@ class TabMacro(QWidget):
         self.th_micro.start()
 
     @Slot()
+    def micro_close(self):
+        self.tabs_viewer.doc_viewer.quit_edit(True)
+        self.str_to_main('문서를 닫았습니다.')
+
+    @Slot()
     def micro_apply(self):
         edit_list = self.edit_editor.table_edit.edits_copy_one(self.tabs_viewer.doc_viewer.spin.value() - 1)
         text = self.tabs_viewer.doc_viewer.viewer.toPlainText()
@@ -384,7 +390,7 @@ class TabMacro(QWidget):
     def micro_finish(self):
         code = self.micro_post.doc_code
         if self.micro_post.mode == 1:
-            self.tabs_viewer.doc_viewer.quit_edit()
+            self.tabs_viewer.doc_viewer.quit_edit(False)
         self.th_micro.quit()
         if self.micro_post.mode == 1:
             time.sleep(0.01)
@@ -461,21 +467,21 @@ class TableEnhanced(QTableWidget):
 
     def rows_cut(self, rows_list, up):  # generator, table item -> table item
         rows_list.reverse()
-        i = 0
+        ii = 0
         for r in rows_list:
-            yield [self.item(r + i, c) for c in range(self.columnCount())]
-            i += 1 if up else 0
-            self.removeRow(r + i)  # 지우기
+            yield [self.item(r + ii, c) for c in range(self.columnCount())]
+            ii += 1 if up else 0
+            self.removeRow(r + ii)  # 지우기
 
     def rows_paste(self, where_to, rows_gen, up):
-        i, n = 0, 0
+        ii, n = 0, 0
         col_origin = self.currentColumn()
         for row in rows_gen:
-            self.insertRow(where_to + i)
+            self.insertRow(where_to + ii)
             n += 1
             for c in range(len(row)):
-                self.setItem(where_to + i, c, QTableWidgetItem(row[c]))
-            i -= 0 if up else 1
+                self.setItem(where_to + ii, c, QTableWidgetItem(row[c]))
+            ii -= 0 if up else 1
         # current & selection
         if up:
             rng = QTableWidgetSelectionRange(where_to, 0, where_to + n - 1, self.columnCount() - 1)
@@ -578,6 +584,7 @@ class TableDoc(TableEnhanced):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
         if e.key() == Qt.Key_Insert:
             self.rows_insert([['^', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
+            self.setCurrentCell(self.currentRow() - 1, 1)
 
     def mouseDoubleClickEvent(self, e):
         if e.button() == Qt.LeftButton:
@@ -588,7 +595,7 @@ class TableDoc(TableEnhanced):
     @Slot(int, str)
     def set_error(self, row, text):
         item = QTableWidgetItem(text)
-        item.setFlags(item.flags() ^ Qt.ItemIsEditable ^ Qt.ItemIsEnabled)
+        item.setFlags(item.flags() ^ Qt.ItemIsEditable)
         self.setItem(row, 2, item)
         self.resizeColumnToContents(2)
 
@@ -606,6 +613,16 @@ class TableDoc(TableEnhanced):
     def after_insert(self):
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
+
+    @Slot(int)
+    def insert_edit_num(self, edit_num):
+        where_to = self.currentRow()
+        if where_to == -1:
+            where_to = 0
+        # elif edit_num == 1 and self.item(0, 0).text()[0] != '#':
+        #     where_to = 0
+        self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
+        self.setCurrentCell(self.currentRow() - 1, 1)
 
     @Slot()
     def insert_edit_1(self):
@@ -642,15 +659,6 @@ class TableDoc(TableEnhanced):
     @Slot()
     def insert_edit_9(self):
         self.insert_edit_num(9)
-
-    @Slot(int)
-    def insert_edit_num(self, edit_num):
-        where_to = self.currentRow()
-        if where_to == -1:
-            where_to = 0
-        # elif edit_num == 1 and self.item(0, 0).text()[0] != '#':
-        #     where_to = 0
-        self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
 
     @classmethod
     def dedup(cls, x):
@@ -745,7 +753,7 @@ class DocInventory(QWidget):
 
 
 class DocViewer(QWidget):
-    sig_main_label = Signal(str)
+    # sig_main_label = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -758,9 +766,14 @@ class DocViewer(QWidget):
         self.btn_edit = QPushButton('편집', self)
         self.btn_edit.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_edit.setEnabled(False)
+        self.btn_close = QPushButton('닫기', self)
+        self.btn_close.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_close.setEnabled(False)
         box_tab_view.addWidget(self.combo_info)
+        box_tab_view.addWidget(self.btn_close)
         box_tab_view.addWidget(self.btn_edit)
-        box_tab_view.setStretchFactor(self.combo_info, 4)
+        box_tab_view.setStretchFactor(self.combo_info, 5)
+        box_tab_view.setStretchFactor(self.btn_close, 1)
         box_tab_view.setStretchFactor(self.btn_edit, 1)
         box_tab_view.setContentsMargins(0, 0, 0, 0)
         self.tab_view.setLayout(box_tab_view)
@@ -815,6 +828,7 @@ class DocViewer(QWidget):
             self.combo_info.addItem(parse.unquote(code))
             self.combo_info.addItems(self.get_info(text))
         self.btn_edit.setEnabled(editable)
+        self.btn_close.setEnabled(True)
         self.viewer.setText(text)
 
     @Slot(str)
@@ -825,12 +839,14 @@ class DocViewer(QWidget):
         self.viewer.setText(text)
 
     @Slot()
-    def quit_edit(self):
+    def quit_edit(self, clear):
         self.viewer.setReadOnly(True)
         self.combo_info.clear()
-        # self.viewer.clear()
-        # self.combo_info.setEnabled(False)
-        # self.btn_edit.setEnabled(False)
+        if clear:
+            self.viewer.clear()
+            self.combo_info.setEnabled(False)
+            self.btn_edit.setEnabled(False)
+            self.btn_close.setEnabled(False)
         self.tabs.setCurrentWidget(self.tab_view)
 
     @classmethod
@@ -932,10 +948,6 @@ class DiffViewer(QWidget):
     def no_micro_clicked(self):
         self.sig_send_diff_micro.emit(4)
 
-    @Slot(str)
-    def show_html(self, t):
-        self.browser.setHtml(t)
-
 
 class TabViewers(QTabWidget):
     sig_diff_done = Signal(int)
@@ -958,7 +970,8 @@ class TabViewers(QTabWidget):
     @Slot(str)
     def show_diff(self, diff_html):
         self.diff_viewer.tabs.setCurrentWidget(self.diff_viewer.tab_macro)
-        self.diff_viewer.show_html(diff_html)
+        # self.diff_viewer.show_html(diff_html)
+        self.diff_viewer.browser.setHtml(diff_html)
         self.setCurrentWidget(self.diff_viewer)
 
     @Slot(str)
