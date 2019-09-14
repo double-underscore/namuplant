@@ -10,7 +10,7 @@ from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QActi
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange, QFileDialog
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QStatusBar
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QImage
+from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QPalette
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, Slot, Signal
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 
@@ -30,9 +30,9 @@ def trace(func):
 
     return wrapper
 
-
 # todo 미러 사이트를 통한 목록 필터링
 # todo 목록 중복 제거
+# todo 파일 문서명 일괄 변경 (접두 접미)
 
 
 class MainWindow(QMainWindow):
@@ -112,7 +112,6 @@ class CheckDdos(QDialog):
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.browser = QWebEngineView()
-
         self.btn = QPushButton('완료')
         self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn.clicked.connect(self.accept)
@@ -195,7 +194,7 @@ class TabMacro(QWidget):
         self.combo_speed.setMinimumWidth(70)
         self.combo_speed.setMaximumWidth(100)
         self.combo_speed.currentIndexChanged.connect(self.iterate_speed_change)
-        # todo 스피드 옵션 이터레이트 즉시 반응 - 작동 확인 필요
+        # todo 스피드 옵션 이터레이트 즉시 반응
         self.btn_do = QPushButton('시작', self)
         self.btn_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_do.setMinimumWidth(72)
@@ -217,13 +216,13 @@ class TabMacro(QWidget):
         split_h.setStyleSheet("""
             QSplitter::handle {
                 background-color: #eeeedd;
-                }
+            }
             """)
         split_h.addWidget(self.doc_board)
         split_h.addWidget(split_v)
         split_h.setStretchFactor(0, 1)
         split_h.setStretchFactor(1, 1)
-        split_h.splitterMoved.connect(self.split_test)
+        # split_h.splitterMoved.connect(self.split_test)
 
         # box last row
         box_last_row = QHBoxLayout()
@@ -420,7 +419,6 @@ class TableEnhanced(QTableWidget):
         self.verticalHeader().setDefaultSectionSize(23)
         self.horizontalHeader().setMinimumSectionSize(30)
         self.verticalHeader().setSectionsClickable(False)
-
         self.shortcuts()
 
     def shortcuts(self):
@@ -436,7 +434,6 @@ class TableEnhanced(QTableWidget):
         copy_sheet.activated.connect(self.copy_sheet)
 
     def keyPressEvent(self, e):
-        # todo 목록에 있는 거 지우면 미리보기도 없애기
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
 
         if e.key() == Qt.Key_Return:
@@ -731,7 +728,6 @@ class DocBoard(QWidget):
         self.combo_option.addItems(['1개', '역링크', '분류'])
         self.combo_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_option.currentTextChanged.connect(self.combo_option_change)
-
         self.name_input = QLineEdit()
         self.name_input.setMinimumWidth(100)
         self.name_input.setPlaceholderText('문서 추가')
@@ -768,10 +764,11 @@ class DocViewer(QWidget):
         super().__init__()
         # tab view
         self.tab_view = QWidget()
-        box_tab_view = QHBoxLayout()
         self.combo_info = QComboBox()
         self.combo_info.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.combo_info.setEditable(True)
         self.combo_info.setEnabled(False)
+        self.combo_info.setInsertPolicy(QComboBox.NoInsert)
         self.btn_edit = QPushButton('편집', self)
         self.btn_edit.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_edit.setMaximumWidth(100)
@@ -780,6 +777,7 @@ class DocViewer(QWidget):
         self.btn_close.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_close.setMaximumWidth(100)
         self.btn_close.setEnabled(False)
+        box_tab_view = QHBoxLayout()
         box_tab_view.addWidget(self.combo_info)
         box_tab_view.addWidget(self.btn_close)
         box_tab_view.addWidget(self.btn_edit)
@@ -790,7 +788,6 @@ class DocViewer(QWidget):
         self.tab_view.setLayout(box_tab_view)
         # tab edit
         self.tab_edit = QWidget()
-        box_tab_edit = QHBoxLayout()
         self.spin = QSpinBox()
         self.spin.setMinimum(1)
         self.spin.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -804,6 +801,7 @@ class DocViewer(QWidget):
         self.btn_post = QPushButton('전송', self)
         self.btn_post.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_post.setMaximumWidth(100)
+        box_tab_edit = QHBoxLayout()
         box_tab_edit.addWidget(self.spin)
         box_tab_edit.addWidget(self.btn_apply)
         box_tab_edit.addStretch(1)
@@ -823,7 +821,7 @@ class DocViewer(QWidget):
         self.tabs.setMaximumHeight(24)
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
-                border: 0;
+                border: 0px;
             }
             """)
         # viewer
@@ -835,8 +833,6 @@ class DocViewer(QWidget):
         box_v = QVBoxLayout()
         box_v.addWidget(self.tabs)
         box_v.addWidget(self.viewer)
-        box_v.setStretchFactor(self.tabs, 1)
-        box_v.setStretchFactor(self.viewer, 9)
         box_v.setContentsMargins(0, 0, 0, 0)
         self.setLayout(box_v)
 
@@ -1013,7 +1009,8 @@ class TabViewers(QTabWidget):
         self.tabBar().hide()
         self.setStyleSheet("""
             QTabWidget::pane {
-                border: 0;}
+            border: 0;
+            }
             """)
 
     @Slot(str)
@@ -1222,6 +1219,7 @@ if __name__ == '__main__':
     storage.new_setting()
     # QWebEngineProfile.defaultProfile().setHttpAcceptLanguage('ko')
     app = QApplication(sys.argv)
+    # app.setStyle('fusion')
     win = MainWindow()
     print(process.memory_info().rss / 1024 / 1024)
     sys.exit(app.exec_())

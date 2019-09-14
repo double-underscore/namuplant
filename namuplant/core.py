@@ -372,6 +372,7 @@ class Iterate(ReqPost):
         return data['error']
     
     def upload(self, file_dir, doc_name, edit_list):
+        # todo 파일 문서 내용은 어차피 편집 지시자마다 똑같음
         doc_url = f'{site_url}/Upload'
         data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '', 'lic': '제한적 이용', 'cat': ''}
         summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
