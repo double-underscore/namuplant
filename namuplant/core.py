@@ -9,7 +9,7 @@ import pyperclip
 import keyboard
 import difflib
 from namuplant import storage
-site_url = 'https://namu.wiki'
+SITE_URL = 'https://namu.wiki'
 
 # todo 0번 편집사항 (공통편집)
 # todo 디도스 체크시 간헐적으로 정상 수행됐으면서 오류 띄우는 문제
@@ -23,14 +23,14 @@ class SeedSession(QObject):
         super().__init__()
         self.is_ddos_checked = False
         self.CONFIG = storage.read_setting('config.ini')
-        self.URL_LOGIN = f'{site_url}/member/login'
+        self.URL_LOGIN = f'{SITE_URL}/member/login'
         self.s = requests.Session()
 
     def login(self):
         self.s = requests.Session()
         self.s.headers.update({'user-agent': self.CONFIG['UA']})
-        self.ddos_check(f'{site_url}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', 'get')
-        self.s.cookies.set('umi', self.CONFIG['UMI'], domain=f'.{site_url[8:]}')
+        self.ddos_check(f'{SITE_URL}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', 'get')
+        self.s.cookies.set('umi', self.CONFIG['UMI'], domain=f'.{SITE_URL[8:]}')
         soup = self.ddos_check(self.URL_LOGIN, 'post', cookies=self.s.cookies,
                                data={'username': self.CONFIG['ID'], 'password': self.CONFIG['PW']})
         info = soup.select('body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right >'
@@ -85,7 +85,7 @@ class ReqPost(SeedSession):
         self.diff_done = 1
 
     def get(self, doc_code):
-        doc_url = f'{site_url}/edit/{doc_code}'
+        doc_url = f'{SITE_URL}/edit/{doc_code}'
         text = ''
         error_log = ''
         while True:
@@ -96,7 +96,7 @@ class ReqPost(SeedSession):
                 break
             else:
                 self.login()
-        if baserev == 0:
+        if baserev == '0':
             error_log = '문서가 존재하지 않습니다.'
         else:
             if self.is_over_perm(soup):
@@ -123,7 +123,7 @@ class ReqPost(SeedSession):
 
     def post(self, doc_code, data):
         # identifier, baserev, text, error, log
-        doc_url = f'{site_url}/edit/{doc_code}'
+        doc_url = f'{SITE_URL}/edit/{doc_code}'
         while True:
             soup = self.ddos_check(doc_url, 'post')  # 가짜 포스트
             if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
@@ -373,7 +373,7 @@ class Iterate(ReqPost):
     
     def upload(self, file_dir, doc_name, edit_list):
         # todo 파일 문서 내용은 어차피 편집 지시자마다 똑같음
-        doc_url = f'{site_url}/Upload'
+        doc_url = f'{SITE_URL}/Upload'
         data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '', 'lic': '제한적 이용', 'cat': ''}
         summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
         for edit in edit_list:
@@ -436,7 +436,6 @@ class Micro(ReqPost):
         super().__init__()
         self.data = {}
         self.edits = []
-
         self.doc_code = ''
         self.text = ''
         self.do_post = False
@@ -546,6 +545,10 @@ class ReqGet(SeedSession):
                 else:
                     label = '해당 문서는 분류 문서가 아닙니다.'
                     winsound.Beep(500, 50)
+            elif self.option == 3:  # 파일
+                if self.mode == 1:
+                    label = '이미지 파일은 우클릭으로 추가할 수 없습니다.'
+                    winsound.Beep(500, 50)
             if codes:
                 self.send_code_list.emit(codes)  # code list
         else:
@@ -573,8 +576,8 @@ class ReqGet(SeedSession):
 
     @classmethod
     def get_code(cls, url):
-        if url.find(site_url) >= 0:
-            search = re.search(rf'{site_url}/\w+/(.*?)($|#|\?)', url).group(1)
+        if url.find(SITE_URL) >= 0:
+            search = re.search(rf'{SITE_URL}/\w+/(.*?)($|#|\?)', url).group(1)
             if search:
                 return search
             else:
@@ -586,7 +589,7 @@ class ReqGet(SeedSession):
         total = 0
         doc_name = parse.unquote(doc_code)
         list_ref = []
-        soup = self.ddos_check(f'{site_url}/xref/{doc_code}', 'get')
+        soup = self.ddos_check(f'{SITE_URL}/xref/{doc_code}', 'get')
         spaces = soup.select(
             'body > div.content-wrapper > article > fieldset > form > div:nth-child(1) > select:nth-child(2) > option')
         for namespace in [parse.quote(space.get('value')) for space in spaces]:
@@ -600,7 +603,7 @@ class ReqGet(SeedSession):
                 namespace_unquote = parse.unquote(namespace)
                 self.sig_label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
                                          f'\n{added_unquote}')
-                soup = self.ddos_check(f'{site_url}/xref/{doc_code}?namespace={namespace}{added}', 'get')
+                soup = self.ddos_check(f'{SITE_URL}/xref/{doc_code}?namespace={namespace}{added}', 'get')
                 titles = soup.select('div > ul > li > a')  # 목록
                 for v in titles:
                     if v.next_sibling[2:-1] != 'redirect':
@@ -621,7 +624,7 @@ class ReqGet(SeedSession):
         list_cat = []
         btn_done = 0
         added = ''
-        soup = self.ddos_check(f'{site_url}/w/{doc_code}', 'get')
+        soup = self.ddos_check(f'{SITE_URL}/w/{doc_code}', 'get')
         h2s = soup.select('h2.wiki-heading')
         divs = soup.select('body > div.content-wrapper > article > div.wiki-content.clearfix > div')
         for i in range(len(h2s)):
@@ -652,7 +655,7 @@ class ReqGet(SeedSession):
                         added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
                         self.sig_label_text.emit(
                             f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
-                        soup_new = self.ddos_check(f'{site_url}/w/{doc_code}{added}', 'get')
+                        soup_new = self.ddos_check(f'{SITE_URL}/w/{doc_code}{added}', 'get')
                         divs_new = soup_new.select('body > div.content-wrapper >'
                                                    'article > div.wiki-content.clearfix > div')
                         for v in divs_new[i].select('div > ul > li > a'):
@@ -662,4 +665,3 @@ class ReqGet(SeedSession):
                     else:
                         break
         return list_cat, f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.'
-
