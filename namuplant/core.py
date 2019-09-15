@@ -29,10 +29,10 @@ class SeedSession(QObject):
     def login(self):
         self.s = requests.Session()
         self.s.headers.update({'user-agent': self.CONFIG['UA']})
-        self.ddos_check(f'{SITE_URL}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', 'get')
+        self.request_soup(f'{SITE_URL}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8', 'get')
         self.s.cookies.set('umi', self.CONFIG['UMI'], domain=f'.{SITE_URL[8:]}')
-        soup = self.ddos_check(self.URL_LOGIN, 'post', cookies=self.s.cookies,
-                               data={'username': self.CONFIG['ID'], 'password': self.CONFIG['PW']})
+        soup = self.request_soup(self.URL_LOGIN, 'post',
+                                 data={'username': self.CONFIG['ID'], 'password': self.CONFIG['PW']})
         info = soup.select('body > div.navbar-wrapper > nav > ul.nav.navbar-nav.pull-right >'
                            'li > div > div.dropdown-item.user-info > div > div')
         if info[1].text == 'Member':
@@ -40,40 +40,18 @@ class SeedSession(QObject):
         else:
             print('login FAILURE')
 
-    def ddos_check(self, url, func, **kwargs):
-        if func == 'get':
-            func = self.s.get
-            print('get', url)
-        elif func == 'post':
-            func = self.s.post
-            if 'data' in kwargs:
-                print('post-real', url)
-            else:
-                print('post-0', url)
-        else:
-            return
-        # 반복 구간
+    def request_soup(self, url, func, **kwargs):  # 디도스 검사 리퀘스트
+        func = self.s.post if func == 'post' else self.s.get
         while True:
-            if 'files' in kwargs:
-                r = func(url, headers={'referer': url}, cookies=self.s.cookies, data=kwargs['data'],
-                         files=kwargs['files'])
-            elif 'data' in kwargs:
-                r = func(url, headers={'referer': url}, cookies=self.s.cookies, data=kwargs['data'])
+            r = func(url, headers={'referer': url}, cookies=self.s.cookies, **kwargs)
+            if r.status_code == 429:  # too many requests
+                self.is_ddos_checked = False
+                self.sig_check_ddos.emit(self)
+                while not self.is_ddos_checked:
+                    time.sleep(0.1)
+                continue
             else:
-                r = func(url, headers={'referer': url}, cookies=self.s.cookies)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            if soup.title:
-                if soup.title.text == '비정상적인 트래픽 감지':
-                    print('ddos!!')
-                    self.is_ddos_checked = False
-                    self.sig_check_ddos.emit(self)
-                    while not self.is_ddos_checked:
-                        time.sleep(0.1)
-                    continue
-                else:
-                    return soup
-            else:  # for raw page
-                return soup
+                return BeautifulSoup(r.text, 'html.parser')
 
 
 class ReqPost(SeedSession):
@@ -84,12 +62,12 @@ class ReqPost(SeedSession):
         self.edit_list = []
         self.diff_done = 1
 
-    def get(self, doc_code):
+    def get_text(self, doc_code):
         doc_url = f'{SITE_URL}/edit/{doc_code}'
         text = ''
         error_log = ''
         while True:
-            soup = self.ddos_check(doc_url, 'get')
+            soup = self.request_soup(doc_url, 'get')
             baserev = soup.find(attrs={'name': 'baserev'})['value']
             identifier = soup.find(attrs={'name': 'identifier'})['value']
             if identifier == f'm:{self.CONFIG["ID"]}':  # 로그인 안 되어 있으면 로그인
@@ -125,7 +103,7 @@ class ReqPost(SeedSession):
         # identifier, baserev, text, error, log
         doc_url = f'{SITE_URL}/edit/{doc_code}'
         while True:
-            soup = self.ddos_check(doc_url, 'post')  # 가짜 포스트
+            soup = self.request_soup(doc_url, 'post')  # 가짜 포스트
             if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
                 self.login()
             else:
@@ -134,7 +112,7 @@ class ReqPost(SeedSession):
         data['agree'] = 'Y'
         del data['error']
         # 진짜 포스트
-        soup = self.ddos_check(doc_url, 'post', data=data, files={'file': None})
+        soup = self.request_soup(doc_url, 'post', data=data, files={'file': None})
         # 오류메시지
         alert = soup.select('.alert-danger')
         if alert:  # 편집기 오류 메시지
@@ -173,19 +151,11 @@ class ReqPost(SeedSession):
             return False
 
     @classmethod
-    def is_not_exist_read(cls, soup):
-        element = soup.select('.wiki-inner-content > p')
-        if element:
-            return True  # 존재하지 않는 문서
-        else:
-            return False
-
-    @classmethod
-    def is_not_exist_edit(cls, soup):
+    def is_exist_edit(cls, soup):  # /edit/
         if soup.small.text == '(새 문서 생성)':
-            return True  # 존재하지 않는 문서
+            return False  # 존재하지 않는 문서
         else:
-            return False
+            return True
 
     @classmethod
     def find_replace(cls, text, edit_list, title=''):
@@ -354,7 +324,7 @@ class Iterate(ReqPost):
         
     def edit(self, doc_code, edit_list):
         # 획득
-        data = self.get(doc_code)  # identifier, baserev, text, error
+        data = self.get_text(doc_code)  # identifier, baserev, text, error
         doc_name = parse.unquote(doc_code)
         if not data['error']:  # 권한 X, 문서 X
             # 변경
@@ -405,7 +375,7 @@ class Iterate(ReqPost):
         try:
             with open(file_dir, 'rb') as f:
                 while True:
-                    soup = self.ddos_check(doc_url, 'post', data=multi_data, files={'file': f})
+                    soup = self.request_soup(doc_url, 'post', data=multi_data, files={'file': f})
                     if self.is_captcha(soup):
                         self.login()
                     else:
@@ -464,7 +434,7 @@ class Micro(ReqPost):
                 label = '중단점을 열람 중입니다.'
                 text = '중단점'
             else:  # 문서
-                data = self.get(self.doc_code)
+                data = self.get_text(self.doc_code)
                 if data['text']:
                     label = f'\'{doc_name}\' 문서를 열람 중입니다.'
                     text = data['text']
@@ -482,7 +452,7 @@ class Micro(ReqPost):
 
         self.do_post = False
         self.do_cancel = False
-        data = self.get(self.doc_code)
+        data = self.get_text(self.doc_code)
         doc_name = parse.unquote(self.doc_code)
         if data['error']:  # 권한 X
             self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집할 권한이 없습니다.')
@@ -532,11 +502,9 @@ class ReqGet(SeedSession):
             self.code = self.copy_url()
         codes = []
         label = ''
-        if self.code:
+        if self.code:  # 직접 입력은 외부에서 조달
             if self.option == 0:  # 1개
-                code_unquote = parse.unquote(self.code)
-                codes = [self.code]
-                label = f'\'{code_unquote}\' 문서를 목록에 추가했습니다.'
+                codes, label = self.get_one(self.code)
             elif self.option == 1:  # 역링크
                 codes, label = self.get_xref(self.code)
             elif self.option == 2:  # 분류
@@ -571,6 +539,14 @@ class ReqGet(SeedSession):
             return ''
 
     @classmethod
+    def is_exist_read(cls, soup):  # /w/
+        element = soup.select('.wiki-inner-content > p')
+        if element:
+            return False  # 존재하지 않는 문서
+        else:
+            return True
+
+    @classmethod
     def get_redirect(cls, url):
         pass
 
@@ -585,14 +561,19 @@ class ReqGet(SeedSession):
         else:
             return ''
 
+    def get_one(self, doc_code):  # 존재여부 검사
+        doc_name = parse.unquote(doc_code)
+        if self.is_exist_read(self.request_soup(f'{SITE_URL}/w/{doc_code}', 'get')):
+            return [doc_code], f'\'{doc_name}\' 문서를 목록에 추가했습니다.'
+        else:
+            return [], f'\'{doc_name}\' 문서는 존재하지 않습니다.'
+
     def get_xref(self, doc_code):
         total = 0
         doc_name = parse.unquote(doc_code)
         list_ref = []
-        soup = self.ddos_check(f'{SITE_URL}/xref/{doc_code}', 'get')
-        spaces = soup.select(
-            'body > div.content-wrapper > article > fieldset > form > div:nth-child(1) > select:nth-child(2) > option')
-        for namespace in [parse.quote(space.get('value')) for space in spaces]:
+        soup = self.request_soup(f'{SITE_URL}/xref/{doc_code}', 'get')
+        for namespace in list(map(lambda x: parse.quote(x.get('value')), soup.select('select:nth-child(2) > option'))):
             added = ''
             while True:
                 if self.is_quit:
@@ -603,14 +584,12 @@ class ReqGet(SeedSession):
                 namespace_unquote = parse.unquote(namespace)
                 self.sig_label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
                                          f'\n{added_unquote}')
-                soup = self.ddos_check(f'{SITE_URL}/xref/{doc_code}?namespace={namespace}{added}', 'get')
-                titles = soup.select('div > ul > li > a')  # 목록
-                for v in titles:
-                    if v.next_sibling[2:-1] != 'redirect':
+                soup = self.request_soup(f'{SITE_URL}/xref/{doc_code}?namespace={namespace}{added}', 'get')
+                for v in soup.select('div > ul > li > a'):  # 표제어 목록
+                    if not v.next_sibling[2:-1] == 'redirect':
                         list_ref.append(v.get('href')[3:])
                         total += 1
-                btn = soup.select('body > div.content-wrapper > article > div > a')  # 앞뒤버튼
-                added = btn[1].get('href')  # 뒤 버튼
+                added = soup.select('article > div > a')[1].get('href')  # 앞뒤 버튼 중 뒤 버튼
                 if not added:  # 없으면 다음 스페이스로
                     break
                 else:
@@ -624,11 +603,9 @@ class ReqGet(SeedSession):
         list_cat = []
         btn_done = 0
         added = ''
-        soup = self.ddos_check(f'{SITE_URL}/w/{doc_code}', 'get')
-        h2s = soup.select('h2.wiki-heading')
-        divs = soup.select('body > div.content-wrapper > article > div.wiki-content.clearfix > div')
-        for i in range(len(h2s)):
-            h2s[i] = h2s[i].text[h2s[i].text.rfind(' ') + 1:]
+        soup = self.request_soup(f'{SITE_URL}/w/{doc_code}', 'get')
+        divs = soup.select('div.wiki-content > div')
+        h2s = list(map(lambda x: x.text[x.text.rfind(' ') + 1:], soup.select('h2.wiki-heading')))
         # divs 0 문서내용 1 문서수 2 목록 3 문서수 4 버튼(있으면) 5 목록 6 버튼(있으면) ....
         for i in range(len(divs)):
             is_list = divs[i].select('div > ul > li > a')
@@ -655,9 +632,8 @@ class ReqGet(SeedSession):
                         added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
                         self.sig_label_text.emit(
                             f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
-                        soup_new = self.ddos_check(f'{SITE_URL}/w/{doc_code}{added}', 'get')
-                        divs_new = soup_new.select('body > div.content-wrapper >'
-                                                   'article > div.wiki-content.clearfix > div')
+                        soup_new = self.request_soup(f'{SITE_URL}/w/{doc_code}{added}', 'get')
+                        divs_new = soup_new.select('div.wiki-content > div')
                         for v in divs_new[i].select('div > ul > li > a'):
                             list_cat.append(v.get('href')[3:])
                             total += 1

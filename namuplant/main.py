@@ -13,10 +13,9 @@ from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QStatusBar, QHe
 from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QPalette
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Slot, Signal
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
-
 from namuplant import core, storage
-
 process = psutil.Process(os.getpid())
+
 
 def trace(func):
     def wrapper(self, *args, **kwargs):
@@ -82,8 +81,9 @@ class MainWindow(QMainWindow):
     def action_test(self):
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
         # print(process.memory_info().rss / 1024 / 1024)
-        # self.main_widget.ddos_dialog.browser.load(QUrl('https://m.naver.com'))
-        # self.main_widget.ddos_dialog.show()
+        self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
+        # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
+        self.main_widget.ddos_dialog.show()
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
         pass
 
@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         print(process.memory_info().rss / 1024 / 1024)
 
 
-class CheckDdos(QDialog):
+class DDOSDialog(QDialog):
 
     def __init__(self):
         super().__init__()
@@ -100,11 +100,15 @@ class CheckDdos(QDialog):
         self.label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        QWebEngineProfile.defaultProfile().setHttpAcceptLanguage('ko')
         self.browser = QWebEngineView()
+        self.browser.setStyleSheet('border: 1px solid gray;')
+        self.browser.loadStarted.connect(self.test)
+        self.browser.loadFinished.connect(self.test2)
         self.btn = QPushButton('완료')
         self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn.clicked.connect(self.accept)
-
+        self.abc = False
         box_v = QVBoxLayout()
         box_v.addWidget(self.label)
         box_v.addWidget(self.browser)
@@ -115,6 +119,16 @@ class CheckDdos(QDialog):
         self.setWindowTitle('reCAPTCHA')
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
         self.resize(480, 600)
+
+    @Slot()
+    def test(self):
+        # self.abc = {True: False, False: True}[self.abc]
+        print(self.abc)
+        # self.browser.setHtml("<html><head></head><body><h1>ciao</h1></body></html>")
+
+    @Slot(bool)
+    def test2(self, b):
+        print(b)
 
 
 class MainWidget(QWidget):
@@ -143,7 +157,7 @@ class MainWidget(QWidget):
         box_v.setContentsMargins(3, 3, 3, 3)
         self.setLayout(box_v)
         # ddos dialog connect
-        self.ddos_dialog = CheckDdos()
+        self.ddos_dialog = DDOSDialog()
         self.tab_macro.req_get.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.iterate_post.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.micro_post.sig_check_ddos.connect(self.show_ddos_dialog)
@@ -501,13 +515,15 @@ class TableEnhanced(QTableWidget):
         pos_after += 0 if self.rowCount() - 1 == pos_after else 1
         self.setCurrentCell(pos_after, col_origin)
 
-    def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None):  # text -> table item
+    def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
         if where_to is None:
             where_to = self.rowCount()
         if editable is None:
             editable = self.col_editable
         if clickable is None:
             clickable = self.col_clickable
+        if alignment is None:
+            alignment = self.col_alignment
         text_list_2d.reverse()
         for i in range(len(text_list_2d)):
             self.insertRow(where_to)
@@ -517,6 +533,8 @@ class TableEnhanced(QTableWidget):
                     item.setFlags(item.flags() ^ Qt.ItemIsEditable)
                 if not clickable[c]:
                     item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
+                if alignment[c]:
+                    item.setTextAlignment(alignment[c])  # ex) Qt.AlignCenter
                 self.setItem(where_to, c, item)
         self.resizeColumnsToContents()
 
@@ -561,6 +579,7 @@ class TableDoc(TableEnhanced):
         self.hideColumn(0)
         self.col_editable = (False, False, False)
         self.col_clickable = (False, True, True)
+        self.col_alignment = (False, False, False)
 
     def shortcuts(self):
         super().shortcuts()
@@ -715,6 +734,7 @@ class TableEdit(TableEnhanced):
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.col_editable = (True, False, False, False, False, True)
         self.col_clickable = (True, True, True, True, True, True)
+        self.col_alignment = (Qt.AlignCenter, False, False, False, False, False, False)
 
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
@@ -803,14 +823,15 @@ class DocBoard(QWidget):
 
     @Slot(int)
     def combo_option_change(self, i):
+        if i == 3:
+            self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
+        else:
+            self.name_input.setPlaceholderText('입력하여 문서 추가')
+
         if i == 2:  # 분류
             if not self.name_input.text()[0:3] == '분류:':
                 self.name_input.setText(f'분류:{self.name_input.text()}')
         else:
-            if i == 3:
-                self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
-            else:
-                self.name_input.setPlaceholderText('입력하여 문서 추가')
             if self.name_input.text() == '분류:':
                 self.name_input.clear()
 
@@ -1251,9 +1272,9 @@ class EditEditor(QWidget):
             self.edit_input.setText(t)
 
     def combo_image(self):
-        soup = self.ss.ddos_check(f'{core.SITE_URL}/Upload', 'get')
+        soup = self.ss.request_soup(f'{core.SITE_URL}/Upload', 'get')
         lic = [t.text for t in soup.select('#licenseSelect > option')]
-        lic.insert(0, lic.pop(-1))
+        lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
         cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
         return lic, cat
 
@@ -1287,7 +1308,6 @@ class EditEditor(QWidget):
 if __name__ == '__main__':
     print(process.memory_info().rss / 1024 / 1024)
     storage.new_setting()
-    # QWebEngineProfile.defaultProfile().setHttpAcceptLanguage('ko')
     app = QApplication(sys.argv)
     # app.setStyle('fusion')
     win = MainWindow()
