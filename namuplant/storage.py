@@ -5,6 +5,9 @@ import configparser
 LIST_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
 LOG_FIELD = ['code', 'title', 'opt1', 'opt2', 'opt3', 'opt4', 'edit', 'time', 'rev', 'error']
 
+DOC_F = ['code', 'title', 'error', 'time', 'rev', 'index']
+EDIT_F = ['index', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
+
 
 def write_csv(file_name, option, field, dict_list):
     if field == 'list':
@@ -23,7 +26,7 @@ def read_csv(file_name):
     with open(file_name, 'r', encoding='utf-8', newline='') as csv_file:
         reader = csv.DictReader(csv_file)
         return [dict(row) for row in reader]
-    
+
 
 def read_list_csv(file_name):
     doc_to_insert = []
@@ -83,12 +86,12 @@ def new_setting():
         config['setting'] = {'DELAY': 3}
         with open('config.ini', 'w', encoding='utf-8') as configfile:
             config.write(configfile)
-    if not os.path.isfile('doc_list.csv'):  # 최초 생성
-        with open('doc_list.csv', 'w', encoding='utf-8', newline='') as csv_file:
-            csv.DictWriter(csv_file, LIST_FIELD).writeheader()
-    if not os.path.isfile('edit_log.csv'):  # 최초 생성
-        with open('edit_log.csv', 'w', encoding='utf-8', newline='') as csv_file:
-            csv.DictWriter(csv_file, LOG_FIELD).writeheader()
+
+    files = (('doc_list.csv', DOC_F), ('doc_log.csv', DOC_F), ('edit_list.csv', EDIT_F), ('edit_log.csv', EDIT_F))
+    for name, field in files:
+        if not os.path.isfile(name):  # 최초 생성
+            with open(name, 'w', encoding='utf-8', newline='') as csv_file:
+                csv.DictWriter(csv_file, field).writeheader()
 
 
 def read_setting(file_name):
@@ -101,3 +104,23 @@ def read_setting(file_name):
             'PW': config['login']['PW'],
             'DELAY': float(config['setting']['DELAY'])
             }
+
+
+def write_csv_(file_name, option, field):
+    if field == 'doc':
+        field = DOC_F
+    elif field == 'edit':
+        field = EDIT_F
+    with open(file_name, option, encoding='utf-8', newline='') as csv_file:
+        if option == 'w':
+            csv.DictWriter(csv_file, field).writeheader()
+        while True:
+            to_write = (yield)  # dict
+            csv.DictWriter(csv_file, field).writerow(to_write)
+
+
+def read_csv_(file_name):
+    with open(file_name, 'r', encoding='utf-8', newline='') as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            yield dict(row)

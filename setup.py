@@ -6,15 +6,14 @@ setup(
     description='A bot for namu.wiki',
     long_description='',
     author='double-underscore',
-    url='https://github.com/double-underscore/namu-plant',
+    url='https://github.com/double-underscore/namuplant',
     license='',
     packages=find_packages(),
     install_requires=['PySide2',
-                      'psutil',
                       'requests',
                       'beautifulsoup4',
                       'pyperclip',
                       'keyboard',
                       'mouse',
-                      'selenium']
+                      'selenium', 'psutil']
 )

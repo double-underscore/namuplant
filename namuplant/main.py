@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
 
-        self.read_doc_list_csv()
+        self.read_doc_list_csv_()
         self.show()
 
     def read_doc_list_csv(self):
@@ -72,11 +72,40 @@ class MainWindow(QMainWindow):
         t_m = self.main_widget.tab_macro
         docs = t_m.doc_board.table_doc.rows_copy_text()
         edits = t_m.edit_editor.table_edit.edits_copy()
-
         storage.write_list_csv('doc_list.csv', docs, edits)
 
+    def read_doc_list_csv_(self):
+        t_m = self.main_widget.tab_macro
+        # doc
+        wt = t_m.doc_board.table_doc.rows_text_insert()
+        wt.send(None)
+        for row in storage.read_csv_('doc_list.csv'):
+            wt.send([row['code'], row['title'], row['error']])
+        t_m.doc_board.table_doc.after_insert()
+        # edit
+        wt = t_m.edit_editor.table_edit.rows_text_insert()
+        wt.send(None)
+        for row in storage.read_csv_('edit_list.csv'):
+            wt.send([row['index'], row['opt1'], row['opt2'], row['opt3'], row['opt4'], row['edit']])
+        t_m.edit_editor.table_edit.resizeColumnsToContents()
+        wt.close()
+
+    def write_doc_list_csv_(self):
+        t_m = self.main_widget.tab_macro
+        # doc
+        wc = storage.write_csv_('doc_list.csv', 'w', 'doc')
+        wc.send(None)
+        for row in t_m.doc_board.table_doc.rows_text_copy():
+            wc.send({'code': row[0], 'title': row[1], 'error': row[2]})
+        # edit
+        wc = storage.write_csv_('edit_list.csv', 'w', 'edit')
+        wc.send(None)
+        for row in t_m.edit_editor.table_edit.rows_text_copy():
+            wc.send({'index': row[0], 'opt1': row[1], 'opt2': row[2], 'opt3': row[3], 'opt4': row[4], 'edit': row[5]})
+        wc.close()
+
     def closeEvent(self, event):
-        self.write_doc_list_csv()
+        self.write_doc_list_csv_()
 
     def action_test(self):
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
@@ -453,9 +482,6 @@ class TableEnhanced(QTableWidget):
         if e.key() == Qt.Key_Delete:  # 지우기
             self.rows_delete(self._rows_selected())
 
-    def test(self):
-        print(self.item(0, 1).flags())
-
     def move_up(self):
         sel = self._rows_selected()
         if sel:
@@ -542,6 +568,37 @@ class TableEnhanced(QTableWidget):
         if rows_list is None:
             rows_list = range(self.rowCount())
         return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
+
+    def rows_text_copy(self, rows_list=None):  # table item -> text
+        if rows_list is None:
+            rows_list = range(self.rowCount())
+        for row in rows_list:
+            self.horizontalHeaderItem(0).text()
+            yield [self.item(row, col).text() for col in range(self.columnCount())]
+
+    def rows_text_insert(self, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
+        if where_to is None:
+            where_to = self.rowCount()
+        if editable is None:
+            editable = self.col_editable
+        if clickable is None:
+            clickable = self.col_clickable
+        if alignment is None:
+            alignment = self.col_alignment
+        n = 0
+        while True:
+            to_insert = (yield)
+            self.insertRow(where_to + n)
+            for col in range(self.columnCount()):
+                item = QTableWidgetItem(to_insert[col])
+                if not editable[col]:  # false 일때 플래그 제거
+                    item.setFlags(item.flags() ^ Qt.ItemIsEditable)
+                if not clickable[col]:
+                    item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
+                if alignment[col]:
+                    item.setTextAlignment(alignment[col])  # ex) Qt.AlignCenter
+                self.setItem(where_to + n, col, item)
+            n += 1
 
     @classmethod
     def convert_table_to_str(cls, list_2d):  # 2d array -> text
@@ -634,6 +691,7 @@ class TableDoc(TableEnhanced):
             self.setFocus()
 
     def after_insert(self):
+        self.resizeColumnsToContents()
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
 
@@ -645,6 +703,7 @@ class TableDoc(TableEnhanced):
         # elif edit_num == 1 and self.item(0, 0).text()[0] != '#':
         #     where_to = 0
         self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
+        self.resizeColumnsToContents()
         self.setCurrentCell(self.currentRow() - 1, 1)
         self.setFocus()
 
@@ -842,6 +901,7 @@ class DocBoard(QWidget):
             self.table_doc.rows_insert([[f'@{n}',
                                          f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}',
                                          ''] for n in name_list], editable=[False, True, False])
+            self.table_doc.resizeColumnsToContents()
             self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
         self.table_doc.setFocus()
 
@@ -1295,6 +1355,7 @@ class EditEditor(QWidget):
         else:
             opt4 = ''
         self.table_edit.rows_insert([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
+        self.table_edit.resizeColumnsToContents()
         self.table_edit.setCurrentCell(self.table_edit.rowCount() - 1, 1)
         # 입력 후
         self.edit_input.clear()
