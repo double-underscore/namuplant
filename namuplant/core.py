@@ -490,39 +490,48 @@ class ReqGet(SeedSession):
     send_code_list = Signal(list)
     finished = Signal()
 
-    def __init__(self):
+    def __init__(self, doc_insert):
         super().__init__()
         self.is_quit = False
         self.option = 0
         self.mode = 0  # 직접 입력
         self.code = ''
+        self.doc_insert = doc_insert
 
     def work(self):
         if self.mode == 1:  # 클릭 얻기
             self.code = self.copy_url()
-        codes = []
-        label = ''
+        # codes = []
+        # label = ''
+        self.doc_insert.send(None)
         if self.code:  # 직접 입력은 외부에서 조달
             if self.option == 0:  # 1개
-                codes, label = self.get_one(self.code)
+                code = self.get_one(self.code)
+                if code:
+                    self.doc_insert.send([code, parse.unquote(code), ''])
             elif self.option == 1:  # 역링크
-                codes, label = self.get_xref(self.code)
+                for code in self.get_xref(self.code):
+                    self.doc_insert.send([code, parse.unquote(code), ''])
+                    # self.send_code.emit(code)
+                # codes, label = self.get_xref(self.code)
             elif self.option == 2:  # 분류
                 if parse.unquote(self.code)[:3] == '분류:':
-                    codes, label = self.get_cat(self.code)
+                    for code in self.get_cat(self.code):
+                        self.doc_insert.send([code, parse.unquote(code), ''])
+                    # codes, label = self.get_cat(self.code)
                 else:
-                    label = '해당 문서는 분류 문서가 아닙니다.'
+                    self.sig_label_text.emit('해당 문서는 분류 문서가 아닙니다.')
                     winsound.Beep(500, 50)
             elif self.option == 3:  # 파일
                 if self.mode == 1:
-                    label = '이미지 파일은 우클릭으로 추가할 수 없습니다.'
+                    self.sig_label_text.emit('이미지 파일은 우클릭으로 추가할 수 없습니다.')
                     winsound.Beep(500, 50)
-            if codes:
-                self.send_code_list.emit(codes)  # code list
+            # if codes:
+            #     self.send_code_list.emit(codes)  # code list
         else:
-            label = '올바른 URL을 찾을 수 없습니다.'
+            self.sig_label_text.emit('올바른 URL을 찾을 수 없습니다.')
             winsound.Beep(500, 50)
-        self.sig_label_text.emit(label)
+        # self.sig_label_text.emit(label)
         self.finished.emit()
 
     def copy_url(self):
@@ -564,9 +573,10 @@ class ReqGet(SeedSession):
     def get_one(self, doc_code):  # 존재여부 검사
         doc_name = parse.unquote(doc_code)
         if self.is_exist_read(self.request_soup(f'{SITE_URL}/w/{doc_code}', 'get')):
-            return [doc_code], f'\'{doc_name}\' 문서를 목록에 추가했습니다.'
+            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 목록에 추가했습니다.')
+            return doc_code
         else:
-            return [], f'\'{doc_name}\' 문서는 존재하지 않습니다.'
+            self.sig_label_text.emit(f'\'{doc_name}\' 문서는 존재하지 않습니다.')
 
     def get_xref(self, doc_code):
         total = 0
@@ -577,9 +587,9 @@ class ReqGet(SeedSession):
             added = ''
             while True:
                 if self.is_quit:
-                    return list_ref,\
-                           f'정지 버튼을 눌러 중지되었습니다.' \
-                           f'\n\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.'
+                    self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
+                                             f'\n\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.')
+                    return
                 added_unquote = parse.unquote(added[6:])
                 namespace_unquote = parse.unquote(namespace)
                 self.sig_label_text.emit(f'{doc_name}의 역링크 {namespace_unquote} 가져오는 중... ( +{total} )'
@@ -587,14 +597,16 @@ class ReqGet(SeedSession):
                 soup = self.request_soup(f'{SITE_URL}/xref/{doc_code}?namespace={namespace}{added}', 'get')
                 for v in soup.select('div > ul > li > a'):  # 표제어 목록
                     if not v.next_sibling[2:-1] == 'redirect':
-                        list_ref.append(v.get('href')[3:])
+                        # list_ref.append(v.get('href')[3:])
+                        yield v.get('href')[3:]
                         total += 1
                 added = soup.select('article > div > a')[1].get('href')  # 앞뒤 버튼 중 뒤 버튼
                 if not added:  # 없으면 다음 스페이스로
                     break
                 else:
                     added = added[added.find('&from'):].replace('\'', '%27')  # '만 인코딩이 안 되어 있음
-        return list_ref, f'\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.'
+        self.sig_label_text.emit(f'\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.')
+        return
 
     def get_cat(self, doc_code):
         total = 0
@@ -621,13 +633,14 @@ class ReqGet(SeedSession):
                 n += 1
                 self.sig_label_text.emit(f'{doc_name}의 하위 {namespace} 가져오는 중... ( +{total} )\n')
                 for v in is_list:  # 첫번째 페이지 획득
-                    list_cat.append(v.get('href')[3:])
+                    # list_cat.append(v.get('href')[3:])
+                    yield v.get('href')[3:]
                     total += 1
                 while True:  # 한 페이지
                     if self.is_quit:
-                        return list_cat,\
-                               f'정지 버튼을 눌러 중지되었습니다.' \
-                               f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.'
+                        self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
+                                                 f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
+                        return
                     if added:
                         added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
                         self.sig_label_text.emit(
@@ -635,9 +648,11 @@ class ReqGet(SeedSession):
                         soup_new = self.request_soup(f'{SITE_URL}/w/{doc_code}{added}', 'get')
                         divs_new = soup_new.select('div.wiki-content > div')
                         for v in divs_new[i].select('div > ul > li > a'):
-                            list_cat.append(v.get('href')[3:])
+                            # list_cat.append(v.get('href')[3:])
+                            yield v.get('href')[3:]
                             total += 1
                         added = divs_new[i - 1].select('a')[1].get('href')  # 버튼에서 값 추출
                     else:
                         break
-        return list_cat, f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.'
+        self.sig_label_text.emit(f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
+        return

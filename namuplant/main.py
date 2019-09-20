@@ -8,10 +8,10 @@ import pyperclip
 import mouse
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
-from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange, QFileDialog
-from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QStatusBar, QHeaderView
+from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
+from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QTableView
 from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QPalette
-from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Slot, Signal
+from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot, QAbstractItemModel, QModelIndex
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from namuplant import core, storage
 process = psutil.Process(os.getpid())
@@ -43,11 +43,14 @@ class MainWindow(QMainWindow):
         # 액션
         act_test = QAction('실험', self)
         act_test.triggered.connect(self.action_test)
+        act_test2 = QAction('실험2', self)
+        act_test2.triggered.connect(self.action_test2)
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
         # 메뉴
         menu_bar = self.menuBar()
         menu_bar.addAction(act_test)
+        menu_bar.addAction(act_test2)
         menu_bar.addAction(act_memory)
         # menu_test = menu_bar.addMenu('&Test')
         # menu_test.addAction(act_test)
@@ -57,22 +60,23 @@ class MainWindow(QMainWindow):
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
 
+        t = time.time()
         self.read_doc_list_csv_()
-        self.show()
+        print(time.time() - t)
 
-    def read_doc_list_csv(self):
-        docs, edits = storage.read_list_csv('doc_list.csv')
-        t_m = self.main_widget.tab_macro
-        t_m.doc_board.table_doc.rows_insert(docs)
-        t_m.doc_board.table_doc.after_insert()
-        t_m.edit_editor.table_edit.rows_insert(edits)
-        # t_m.doc_inventory.table_doc.setcurrent
-
-    def write_doc_list_csv(self):
-        t_m = self.main_widget.tab_macro
-        docs = t_m.doc_board.table_doc.rows_copy_text()
-        edits = t_m.edit_editor.table_edit.edits_copy()
-        storage.write_list_csv('doc_list.csv', docs, edits)
+    # def read_doc_list_csv(self):
+    #     docs, edits = storage.read_list_csv('doc_list.csv')
+    #     t_m = self.main_widget.tab_macro
+    #     t_m.doc_board.table_doc.rows_insert(docs)
+    #     t_m.doc_board.table_doc.after_insert()
+    #     t_m.edit_editor.table_edit.rows_insert(edits)
+    #     # t_m.doc_inventory.table_doc.setcurrent
+    #
+    # def write_doc_list_csv(self):
+    #     t_m = self.main_widget.tab_macro
+    #     docs = t_m.doc_board.table_doc.rows_copy_text()
+    #     edits = t_m.edit_editor.table_edit.edits_copy()
+    #     storage.write_list_csv('doc_list.csv', docs, edits)
 
     def read_doc_list_csv_(self):
         t_m = self.main_widget.tab_macro
@@ -110,11 +114,14 @@ class MainWindow(QMainWindow):
     def action_test(self):
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
         # print(process.memory_info().rss / 1024 / 1024)
-        self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
+        # self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
         # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
-        self.main_widget.ddos_dialog.show()
+        # self.main_widget.ddos_dialog.show()
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
-        pass
+        self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
+
+    def action_test2(self):
+        self.main_widget.tab_macro.doc_board.table_doc.clearContents()
 
     @classmethod
     def action_memory(cls):
@@ -125,7 +132,7 @@ class DDOSDialog(QDialog):
 
     def __init__(self):
         super().__init__()
-        self.label = QLabel('reCAPTCHA 해결 후 완료 버튼을 눌러주세요.')
+        self.label = QLabel('reCAPTCHA 해결 후 완료 버튼을 눌러주세요.\n404 페이지가 로드되면 정상입니다.')
         self.label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -133,10 +140,11 @@ class DDOSDialog(QDialog):
         self.browser = QWebEngineView()
         self.browser.setStyleSheet('border: 1px solid gray;')
         self.browser.loadStarted.connect(self.test)
-        self.browser.loadFinished.connect(self.test2)
+        # self.browser.loadFinished.connect(self.test2)
         self.btn = QPushButton('완료')
         self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn.clicked.connect(self.accept)
+        # self.btn.clicked.connect(self.test2)
         self.abc = False
         box_v = QVBoxLayout()
         box_v.addWidget(self.label)
@@ -154,10 +162,6 @@ class DDOSDialog(QDialog):
         # self.abc = {True: False, False: True}[self.abc]
         print(self.abc)
         # self.browser.setHtml("<html><head></head><body><h1>ciao</h1></body></html>")
-
-    @Slot(bool)
-    def test2(self, b):
-        print(b)
 
 
 class MainWidget(QWidget):
@@ -286,10 +290,10 @@ class TabMacro(QWidget):
         # thread get_click
         mouse.on_right_click(self.get_start)
         self.th_get = QThread()
-        self.req_get = core.ReqGet()
+        self.req_get = core.ReqGet(self.doc_board.table_doc.rows_text_insert())
         self.req_get.finished.connect(self.get_finish)
         self.req_get.sig_label_text.connect(self.str_to_main)
-        self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
+        # self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
         self.doc_board.sig_doc_code.connect(self.get_by_input)
         self.req_get.moveToThread(self.th_get)
         self.th_get.started.connect(self.req_get.work)
@@ -361,6 +365,7 @@ class TabMacro(QWidget):
     @Slot(str)
     def get_by_input(self, code):
         if self.btn_get.isEnabled():
+            # self.t1 = time.time()
             self.btn_get.setEnabled(False)  # 동시 실행 방지
             self.req_get.mode = 0
             self.req_get.code = code
@@ -372,6 +377,10 @@ class TabMacro(QWidget):
     @Slot()
     def get_finish(self):
         self.th_get.quit()
+        # print(time.time() - self.t1)
+        self.doc_board.table_doc.resizeColumnsToContents()
+        self.doc_board.table_doc.setCurrentCell(self.doc_board.table_doc.rowCount() - 1, 1)
+        self.doc_board.table_doc.setFocus()
         self.req_get.is_quit = False
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
@@ -504,7 +513,7 @@ class TableEnhanced(QTableWidget):
 
     def _rows_selected(self):
         if self.selectedItems():
-            return sorted(list({i.row() for i in self.selectedItems()}))
+            return sorted(list({i.row() for i in self.selectedItems()}))  # set comprehension
 
     def rows_cut(self, rows_list, up):  # generator, table item -> table item
         rows_list.reverse()
@@ -533,36 +542,39 @@ class TableEnhanced(QTableWidget):
         self.setRangeSelected(rng, True)
 
     def rows_delete(self, rows_list):
-        col_origin = self.currentColumn()
-        rows_list.reverse()
-        for r in rows_list:
-            self.removeRow(r)
-        pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
-        pos_after += 0 if self.rowCount() - 1 == pos_after else 1
-        self.setCurrentCell(pos_after, col_origin)
+        if rows_list:
+            col_origin = self.currentColumn()
+            rows_list.reverse()
+            t = time.time()
+            for r in rows_list:
+                self.removeRow(r)
+            print(time.time() - t)
+            pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
+            pos_after += 0 if self.rowCount() - 1 == pos_after else 1
+            self.setCurrentCell(pos_after, col_origin)
 
-    def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
-        if where_to is None:
-            where_to = self.rowCount()
-        if editable is None:
-            editable = self.col_editable
-        if clickable is None:
-            clickable = self.col_clickable
-        if alignment is None:
-            alignment = self.col_alignment
-        text_list_2d.reverse()
-        for i in range(len(text_list_2d)):
-            self.insertRow(where_to)
-            for c in range(self.columnCount()):
-                item = QTableWidgetItem(text_list_2d[i][c])
-                if not editable[c]:  # false 일때 플래그 제거
-                    item.setFlags(item.flags() ^ Qt.ItemIsEditable)
-                if not clickable[c]:
-                    item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
-                if alignment[c]:
-                    item.setTextAlignment(alignment[c])  # ex) Qt.AlignCenter
-                self.setItem(where_to, c, item)
-        self.resizeColumnsToContents()
+    # def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None, alignment=None):
+    #     if where_to is None:
+    #         where_to = self.rowCount()
+    #     if editable is None:
+    #         editable = self.col_editable
+    #     if clickable is None:
+    #         clickable = self.col_clickable
+    #     if alignment is None:
+    #         alignment = self.col_alignment
+    #     text_list_2d.reverse()
+    #     for i in range(len(text_list_2d)):
+    #         self.insertRow(where_to)
+    #         for c in range(self.columnCount()):
+    #             item = QTableWidgetItem(text_list_2d[i][c])
+    #             if not editable[c]:  # false 일때 플래그 제거
+    #                 item.setFlags(item.flags() ^ Qt.ItemIsEditable)
+    #             if not clickable[c]:
+    #                 item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
+    #             if alignment[c]:
+    #                 item.setTextAlignment(alignment[c])  # ex) Qt.AlignCenter
+    #             self.setItem(where_to, c, item)
+    #     self.resizeColumnsToContents()
 
     def rows_copy_text(self, rows_list=None):  # table item -> text
         if rows_list is None:
@@ -573,7 +585,7 @@ class TableEnhanced(QTableWidget):
         if rows_list is None:
             rows_list = range(self.rowCount())
         for row in rows_list:
-            self.horizontalHeaderItem(0).text()
+            # self.horizontalHeaderItem(0).text()
             yield [self.item(row, col).text() for col in range(self.columnCount())]
 
     def rows_text_insert(self, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
@@ -588,6 +600,10 @@ class TableEnhanced(QTableWidget):
         n = 0
         while True:
             to_insert = (yield)
+            if to_insert is None:  # 꼼수
+                where_to = self.rowCount()
+                n = 0
+                continue
             self.insertRow(where_to + n)
             for col in range(self.columnCount()):
                 item = QTableWidgetItem(to_insert[col])
@@ -662,7 +678,10 @@ class TableDoc(TableEnhanced):
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
         if e.key() == Qt.Key_Insert:
-            self.rows_insert([['^', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
+            insert = self.rows_text_insert(where_to=self.currentRow())
+            insert.send(None)
+            insert.send(['^', '⌛ 정지 ⌛', ''])
+            # self.rows_insert([['^', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
             self.setCurrentCell(self.currentRow() - 1, 1)
 
     def mouseDoubleClickEvent(self, e):
@@ -682,13 +701,13 @@ class TableDoc(TableEnhanced):
     def set_current(self, row):
         self.setCurrentCell(row, 1)
 
-    @Slot(list)
-    def receive_codes_get(self, code_list):  # code list 1d -> code list 2d
-        if code_list:
-            self.rows_insert([[code, parse.unquote(code), ''] for code in code_list])
-            self.after_insert()
-            self.setCurrentCell(self.rowCount() - 1, 1)
-            self.setFocus()
+    # @Slot(list)
+    # def receive_codes_get(self, code_list):  # code list 1d -> code list 2d
+    #     if code_list:
+    #         self.rows_insert([[code, parse.unquote(code), ''] for code in code_list])
+    #         self.after_insert()
+    #         self.setCurrentCell(self.rowCount() - 1, 1)
+    #         self.setFocus()
 
     def after_insert(self):
         self.resizeColumnsToContents()
@@ -702,7 +721,10 @@ class TableDoc(TableEnhanced):
             where_to = 0
         # elif edit_num == 1 and self.item(0, 0).text()[0] != '#':
         #     where_to = 0
-        self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
+        insert = self.rows_text_insert(where_to=where_to)
+        insert.send(None)
+        insert.send([f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', ''])
+        # self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
         self.resizeColumnsToContents()
         self.setCurrentCell(self.currentRow() - 1, 1)
         self.setFocus()
@@ -895,14 +917,14 @@ class DocBoard(QWidget):
                 self.name_input.clear()
 
     def insert_file(self):
+        insert = self.table_doc.rows_text_insert(editable=[False, True, False])
+        insert.send(None)
         name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './',
                                                  '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
-        if name_list:
-            self.table_doc.rows_insert([[f'@{n}',
-                                         f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}',
-                                         ''] for n in name_list], editable=[False, True, False])
-            self.table_doc.resizeColumnsToContents()
-            self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
+        for n in name_list:
+            insert.send([f'@{n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}', ''])
+        self.table_doc.resizeColumnsToContents()
+        self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
         self.table_doc.setFocus()
 
 
@@ -1354,7 +1376,10 @@ class EditEditor(QWidget):
                 opt4 = self.combo_opt4.currentText()
         else:
             opt4 = ''
-        self.table_edit.rows_insert([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
+        insert = self.table_edit.rows_text_insert()
+        insert.send(None)
+        insert.send([str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()])
+        # self.table_edit.rows_insert([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
         self.table_edit.resizeColumnsToContents()
         self.table_edit.setCurrentCell(self.table_edit.rowCount() - 1, 1)
         # 입력 후
@@ -1372,5 +1397,6 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     # app.setStyle('fusion')
     win = MainWindow()
+    win.show()
     print(process.memory_info().rss / 1024 / 1024)
     sys.exit(app.exec_())
