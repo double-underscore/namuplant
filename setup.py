@@ -15,5 +15,6 @@ setup(
                       'pyperclip',
                       'keyboard',
                       'mouse',
-                      'selenium', 'psutil']
+                      'selenium',
+                      'psutil']
 )

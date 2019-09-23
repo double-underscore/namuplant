@@ -1,4 +1,3 @@
-import sys
 import os
 import re
 import time
@@ -9,11 +8,11 @@ import mouse
 from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
-from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QTableView
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QStandardItem, QStandardItemModel, QPixmap, QPalette
-from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot, QAbstractItemModel, QModelIndex
+from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
+from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap
+from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
-from namuplant import core, storage
+from . import core, storage
 process = psutil.Process(os.getpid())
 
 
@@ -38,78 +37,79 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setStyleSheet('font: 10pt \'맑은 고딕\'; color: #373a3c;')
         self.resize(800, 800)
-        # self.setWindowTitle('namuplant')
+        self.setWindowTitle('namuplant')
         self.setWindowIcon(QIcon('icon.png'))
-        # 액션
+        # 파일 메뉴
+        act_load_doc_list = QAction('문서 열기', self)
+        act_load_doc_list.triggered.connect(self.action_load_doc_list)
+        act_load_edit_list = QAction('편집사항 열기', self)
+        act_load_edit_list.triggered.connect(self.action_load_edit_list)
+        act_save_doc_list = QAction('문서 따로 저장', self)
+        act_save_doc_list.triggered.connect(self.action_save_doc_list)
+        act_save_edit_list = QAction('편집사항 따로 저장', self)
+        act_save_edit_list.triggered.connect(self.action_save_edit_list)
+        # 실험 메뉴
         act_test = QAction('실험', self)
         act_test.triggered.connect(self.action_test)
         act_test2 = QAction('실험2', self)
         act_test2.triggered.connect(self.action_test2)
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
-        # 메뉴
+        # 메뉴바
         menu_bar = self.menuBar()
-        menu_bar.addAction(act_test)
-        menu_bar.addAction(act_test2)
-        menu_bar.addAction(act_memory)
-        # menu_test = menu_bar.addMenu('&Test')
-        # menu_test.addAction(act_test)
-        # menu_memory = menu_bar.addMenu('&Memory')
-        # menu_memory.addAction(act_memory)
+        menu_file = menu_bar.addMenu('파일')
+        menu_file.addActions([act_load_doc_list, act_load_edit_list, act_save_doc_list, act_save_edit_list])
+        menu_test = menu_bar.addMenu('테스트')
+        menu_test.addActions([act_test, act_test2, act_memory])
+
         # 메인
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
-
-        t = time.time()
-        self.read_doc_list_csv_()
-        print(time.time() - t)
-
-    # def read_doc_list_csv(self):
-    #     docs, edits = storage.read_list_csv('doc_list.csv')
-    #     t_m = self.main_widget.tab_macro
-    #     t_m.doc_board.table_doc.rows_insert(docs)
-    #     t_m.doc_board.table_doc.after_insert()
-    #     t_m.edit_editor.table_edit.rows_insert(edits)
-    #     # t_m.doc_inventory.table_doc.setcurrent
-    #
-    # def write_doc_list_csv(self):
-    #     t_m = self.main_widget.tab_macro
-    #     docs = t_m.doc_board.table_doc.rows_copy_text()
-    #     edits = t_m.edit_editor.table_edit.edits_copy()
-    #     storage.write_list_csv('doc_list.csv', docs, edits)
-
-    def read_doc_list_csv_(self):
-        t_m = self.main_widget.tab_macro
-        # doc
-        wt = t_m.doc_board.table_doc.rows_text_insert()
-        wt.send(None)
-        for row in storage.read_csv_('doc_list.csv'):
-            wt.send([row['code'], row['title'], row['error']])
-        t_m.doc_board.table_doc.after_insert()
-        # edit
-        wt = t_m.edit_editor.table_edit.rows_text_insert()
-        wt.send(None)
-        for row in storage.read_csv_('edit_list.csv'):
-            wt.send([row['index'], row['opt1'], row['opt2'], row['opt3'], row['opt4'], row['edit']])
-        t_m.edit_editor.table_edit.resizeColumnsToContents()
-        wt.close()
-
-    def write_doc_list_csv_(self):
-        t_m = self.main_widget.tab_macro
-        # doc
-        wc = storage.write_csv_('doc_list.csv', 'w', 'doc')
-        wc.send(None)
-        for row in t_m.doc_board.table_doc.rows_text_copy():
-            wc.send({'code': row[0], 'title': row[1], 'error': row[2]})
-        # edit
-        wc = storage.write_csv_('edit_list.csv', 'w', 'edit')
-        wc.send(None)
-        for row in t_m.edit_editor.table_edit.rows_text_copy():
-            wc.send({'index': row[0], 'opt1': row[1], 'opt2': row[2], 'opt3': row[3], 'opt4': row[4], 'edit': row[5]})
-        wc.close()
+        self.read_list_csv('doc', 'doc_list.csv')
+        self.read_list_csv('edit', 'edit_list.csv')
 
     def closeEvent(self, event):
-        self.write_doc_list_csv_()
+        self.write_list_csv('doc', 'doc_list.csv')
+        self.write_list_csv('edit', 'edit_list.csv')
+
+    def read_list_csv(self, mode_1: str, file_dir, index=None):
+        t_m = self.main_widget.tab_macro
+        if mode_1 == 'doc':
+            wt = t_m.doc_board.table_doc.rows_text_insert()
+            cols = ['code', 'title', 'rev']
+        elif mode_1 == 'edit':
+            wt = t_m.edit_editor.table_edit.rows_text_insert()
+            cols = ['index', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
+        else:
+            return
+        wt.send(None)
+        for row in storage.read_csv(file_dir):
+            if index is None:
+                wt.send([row[f'{v}'] for v in cols])
+            else:
+                if index in str(row):
+                    wt.send([row[f'{v}'] for v in cols])
+        if mode_1 == 'doc':
+            t_m.doc_board.table_doc.after_insert()
+        elif mode_1 == 'edit':
+            t_m.edit_editor.table_edit.resizeColumnsToContents()
+        wt.close()
+
+    def write_list_csv(self, mode: str, file_dir):
+        t_m = self.main_widget.tab_macro
+        wc = storage.write_csv(file_dir, 'w', mode)
+        wc.send(None)
+        if mode == 'doc':
+            tc = t_m.doc_board.table_doc.rows_text_copy()
+            cols = ['code', 'title', 'error']
+        elif mode == 'edit':
+            tc = t_m.edit_editor.table_edit.rows_text_copy()
+            cols = ['index', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
+        else:
+            return
+        for row in tc:
+            wc.send(dict(zip(cols, [row[i] for i in range(len(row))])))  # 핵심
+        wc.close()
 
     def action_test(self):
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
@@ -118,14 +118,54 @@ class MainWindow(QMainWindow):
         # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
         # self.main_widget.ddos_dialog.show()
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
-        self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
+        # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
+        print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
+        pass
 
     def action_test2(self):
-        self.main_widget.tab_macro.doc_board.table_doc.clearContents()
+        # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
+        print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
+        pass
 
-    @classmethod
-    def action_memory(cls):
-        print(process.memory_info().rss / 1024 / 1024)
+    def action_memory(self):
+        self.main_widget.set_main_label(f'메모리 사용량: {round(process.memory_info().rss / 1024 / 1024, 2)}MB')
+
+    def action_load_doc_list(self):
+        self.load_list('doc')
+
+    def action_load_edit_list(self):
+        self.load_list('edit')
+
+    def action_save_doc_list(self):
+        self.save_list('doc')
+
+    def action_save_edit_list(self):
+        self.save_list('edit')
+
+    def load_list(self, mode):
+        name = {'doc': '문서', 'edit': '편집사항'}[mode]
+        file_dir = QFileDialog.getOpenFileName(self, f'{name} 목록 불러오기', './', 'CSV 파일(*.csv)')[0]
+        if file_dir:
+            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 불러오는 중입니다.')
+            search, ok = QInputDialog.getText(self, '특정 로그 불러오기',
+                                              f'특정 {name} 로그를 불러오는 경우 검색할 내용을 입력해주세요.', QLineEdit.Normal)
+            if ok:
+                try:
+                    if search:
+                        self.read_list_csv(mode, file_dir, search)
+                    else:
+                        self.read_list_csv(mode, file_dir)
+                    self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 불러왔습니다.')
+                except KeyError:
+                    self.main_widget.set_main_label('목록 유형이 잘못되었습니다.')
+
+    def save_list(self, mode):
+        name = {'doc': '문서', 'edit': '편집사항'}[mode]
+        file_dir = QFileDialog.getSaveFileName(self, f'{name} 목록 저장하기', './', 'CSV 파일(*.csv)')[0]
+        if file_dir:
+            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 저장하는 중입니다.')
+            self.write_list_csv(mode, file_dir)
+            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 저장했습니다.')
 
 
 class DDOSDialog(QDialog):
@@ -230,7 +270,6 @@ class TabMacro(QWidget):
         self.combo_speed.setMinimumWidth(70)
         self.combo_speed.setMaximumWidth(100)
         self.combo_speed.currentIndexChanged.connect(self.iterate_speed_change)
-        # todo 스피드 옵션 이터레이트 즉시 반응
         self.btn_do = QPushButton('시작', self)
         self.btn_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_do.setMinimumWidth(72)
@@ -284,7 +323,7 @@ class TabMacro(QWidget):
         self.doc_board.table_doc.sig_doc_viewer.connect(self.micro_view)
         self.doc_board.combo_option.currentIndexChanged.connect(self.btn_get_enable)
         self.tabs_viewer.sig_main_label.connect(self.str_to_main)
-        self.edit_editor.table_edit.sig_insert.connect(self.doc_board.table_doc.insert_edit_num)
+        self.edit_editor.table_edit.sig_insert.connect(self.doc_board.table_doc.insert_edit_index)
         self.btn_do.clicked.connect(self.iterate_start)
         self.btn_pause.clicked.connect(self.thread_quit)
         # thread get_click
@@ -390,8 +429,9 @@ class TabMacro(QWidget):
     def iterate_start(self):
         self.btn_do.setEnabled(False)
         self.btn_pause.setEnabled(True)
-        self.iterate_post.doc_list = self.doc_board.table_doc.rows_copy_text()
-        self.iterate_post.edit_list = self.edit_editor.table_edit.edits_copy()
+        self.iterate_post.doc_list = [row for row in self.doc_board.table_doc.rows_text_copy()]
+        # self.iterate_post.doc_list = self.doc_board.table_doc.rows_text_copy_list()
+        self.iterate_post.edit_dict = self.edit_editor.table_edit.edits_copy(0)
         self.iterate_post.index_speed = self.combo_speed.currentIndex()
         self.iterate_post.diff_done = 1
         self.th_iterate.start()
@@ -432,7 +472,7 @@ class TabMacro(QWidget):
 
     @Slot()
     def micro_apply(self):
-        edit_list = self.edit_editor.table_edit.edits_copy_one(self.tabs_viewer.doc_viewer.spin.value() - 1)
+        edit_list = self.edit_editor.table_edit.edits_copy(int(self.tabs_viewer.doc_viewer.spin.value()))
         text = self.tabs_viewer.doc_viewer.viewer.toPlainText()
         self.tabs_viewer.doc_viewer.viewer.setPlainText(self.micro_post.apply(text, edit_list))
 
@@ -490,6 +530,7 @@ class TableEnhanced(QTableWidget):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
         if e.key() == Qt.Key_Delete:  # 지우기
             self.rows_delete(self._rows_selected())
+            self.resizeColumnsToContents()
 
     def move_up(self):
         sel = self._rows_selected()
@@ -543,49 +584,23 @@ class TableEnhanced(QTableWidget):
 
     def rows_delete(self, rows_list):
         if rows_list:
-            col_origin = self.currentColumn()
-            rows_list.reverse()
-            t = time.time()
-            for r in rows_list:
-                self.removeRow(r)
-            print(time.time() - t)
-            pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
-            pos_after += 0 if self.rowCount() - 1 == pos_after else 1
-            self.setCurrentCell(pos_after, col_origin)
-
-    # def rows_insert(self, text_list_2d, where_to=None, editable=None, clickable=None, alignment=None):
-    #     if where_to is None:
-    #         where_to = self.rowCount()
-    #     if editable is None:
-    #         editable = self.col_editable
-    #     if clickable is None:
-    #         clickable = self.col_clickable
-    #     if alignment is None:
-    #         alignment = self.col_alignment
-    #     text_list_2d.reverse()
-    #     for i in range(len(text_list_2d)):
-    #         self.insertRow(where_to)
-    #         for c in range(self.columnCount()):
-    #             item = QTableWidgetItem(text_list_2d[i][c])
-    #             if not editable[c]:  # false 일때 플래그 제거
-    #                 item.setFlags(item.flags() ^ Qt.ItemIsEditable)
-    #             if not clickable[c]:
-    #                 item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
-    #             if alignment[c]:
-    #                 item.setTextAlignment(alignment[c])  # ex) Qt.AlignCenter
-    #             self.setItem(where_to, c, item)
-    #     self.resizeColumnsToContents()
-
-    def rows_copy_text(self, rows_list=None):  # table item -> text
-        if rows_list is None:
-            rows_list = range(self.rowCount())
-        return [[self.item(r, c).text() for c in range(self.columnCount())] for r in rows_list]
+            if len(rows_list) == self.rowCount():
+                self.setRowCount(0)
+            else:
+                col_origin = self.currentColumn()
+                rows_list.reverse()
+                t = time.time()
+                for r in rows_list:
+                    self.removeRow(r)
+                print(time.time() - t)
+                pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
+                pos_after += 0 if self.rowCount() - 1 == pos_after else 1
+                self.setCurrentCell(pos_after, col_origin)
 
     def rows_text_copy(self, rows_list=None):  # table item -> text
         if rows_list is None:
             rows_list = range(self.rowCount())
         for row in rows_list:
-            # self.horizontalHeaderItem(0).text()
             yield [self.item(row, col).text() for col in range(self.columnCount())]
 
     def rows_text_insert(self, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
@@ -616,12 +631,12 @@ class TableEnhanced(QTableWidget):
                 self.setItem(where_to + n, col, item)
             n += 1
 
-    @classmethod
-    def convert_table_to_str(cls, list_2d):  # 2d array -> text
+    @staticmethod
+    def convert_table_to_str(list_2d):  # 2d array -> text
         return '\n'.join(['\t'.join([str(col) for col in row]) for row in list_2d])
 
-    @classmethod
-    def convert_str_to_table(cls, text):  # text -> 2d array
+    @staticmethod
+    def convert_str_to_table(text):  # text -> 2d array
         return [col.split('\t') for col in text.split('\n')]
 
     def copy_sheet(self):
@@ -714,8 +729,8 @@ class TableDoc(TableEnhanced):
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
 
-    @Slot(int)
-    def insert_edit_num(self, edit_num):
+    @Slot(str)
+    def insert_edit_index(self, edit_index):
         where_to = self.currentRow()
         if where_to == -1:
             where_to = 0
@@ -723,7 +738,7 @@ class TableDoc(TableEnhanced):
         #     where_to = 0
         insert = self.rows_text_insert(where_to=where_to)
         insert.send(None)
-        insert.send([f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', ''])
+        insert.send([f'#{edit_index}', f'💡 편집사항 #{edit_index} 💡', ''])
         # self.rows_insert([[f'#{edit_num}', f'💡 편집사항 #{edit_num} 💡', '']], where_to=where_to)
         self.resizeColumnsToContents()
         self.setCurrentCell(self.currentRow() - 1, 1)
@@ -731,39 +746,39 @@ class TableDoc(TableEnhanced):
 
     @Slot()
     def insert_edit_1(self):
-        self.insert_edit_num(1)
+        self.insert_edit_index('1')
 
     @Slot()
     def insert_edit_2(self):
-        self.insert_edit_num(2)
+        self.insert_edit_index('2')
 
     @Slot()
     def insert_edit_3(self):
-        self.insert_edit_num(3)
+        self.insert_edit_index('3')
 
     @Slot()
     def insert_edit_4(self):
-        self.insert_edit_num(4)
+        self.insert_edit_index('4')
 
     @Slot()
     def insert_edit_5(self):
-        self.insert_edit_num(5)
+        self.insert_edit_index('5')
 
     @Slot()
     def insert_edit_6(self):
-        self.insert_edit_num(6)
+        self.insert_edit_index('6')
 
     @Slot()
     def insert_edit_7(self):
-        self.insert_edit_num(7)
+        self.insert_edit_index('7')
 
     @Slot()
     def insert_edit_8(self):
-        self.insert_edit_num(8)
+        self.insert_edit_index('8')
 
     @Slot()
     def insert_edit_9(self):
-        self.insert_edit_num(9)
+        self.insert_edit_index('9')
 
     @classmethod
     def dedup(cls, x):
@@ -800,7 +815,7 @@ class TableDoc(TableEnhanced):
 
 
 class TableEdit(TableEnhanced):
-    sig_insert = Signal(int)
+    sig_insert = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -821,30 +836,23 @@ class TableEdit(TableEnhanced):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
 
         if e.key() == Qt.Key_Insert:
-            self.sig_insert.emit(int(self.item(self.currentRow(), 0).text()))
+            self.sig_insert.emit(self.item(self.currentRow(), 0).text())
 
-    @classmethod
-    def edit_list_rearrange(cls, lists):  # 이중 리스트를 삼중 리스트로 변환
-        edit_list = []
-        for edit in lists:
-            order = int(edit[0])
-            while len(edit_list) < order:
-                edit_list.append([])
-            edit_list[order - 1].append(edit)
-        return edit_list
+    def mouseDoubleClickEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.sig_insert.emit(self.item(self.currentRow(), 0).text())
 
-    # @classmethod
-    # def edit_list_do_dict(cls, edit_2d):
-    #     list_a = []
-    #     for edit in edit_2d:
-    #         []
-    #     pass
-
-    def edits_copy(self):
-        return self.edit_list_rearrange(self.rows_copy_text())
-
-    def edits_copy_one(self, pick):
-        return self.edit_list_rearrange(self.rows_copy_text())[pick]
+    def edits_copy(self, pick=0):
+        temp = {}
+        for row in self.rows_text_copy():
+            index = row[0]
+            if index not in temp:  # 없으면
+                temp.setdefault(index, [])
+            temp[index].append(row)
+        if pick == 0:  # 전체
+            return temp
+        else:
+            return temp[pick]
 
 
 class LineEnhanced(QLineEdit):
@@ -1009,7 +1017,7 @@ class DocViewer(QWidget):
         self.combo_info.setEnabled(editable)
         if self.combo_info.isEnabled():
             self.combo_info.addItem(parse.unquote(code))
-            self.combo_info.addItems(self.get_info(text))
+            self.combo_info.addItems(self.get_cat_from(text))
         self.btn_edit.setEnabled(editable)
         self.btn_close.setEnabled(True)
         self.viewer.setPlainText(text)
@@ -1032,8 +1040,8 @@ class DocViewer(QWidget):
             self.btn_close.setEnabled(False)
         self.tabs.setCurrentWidget(self.tab_view)
 
-    @classmethod
-    def get_info(cls, text):
+    @staticmethod
+    def get_cat_from(text):
         return re.findall(r'\[\[(분류: ?.*?)\]\]', text)
 
 
@@ -1389,14 +1397,3 @@ class EditEditor(QWidget):
                 self.combo_opt3.setCurrentText('찾기')
             elif opt3 == '찾기':
                 self.combo_opt3.setCurrentText('바꾸기')
-
-
-if __name__ == '__main__':
-    print(process.memory_info().rss / 1024 / 1024)
-    storage.new_setting()
-    app = QApplication(sys.argv)
-    # app.setStyle('fusion')
-    win = MainWindow()
-    win.show()
-    print(process.memory_info().rss / 1024 / 1024)
-    sys.exit(app.exec_())
