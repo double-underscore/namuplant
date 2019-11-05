@@ -5,7 +5,7 @@ import psutil
 from urllib import parse
 import pyperclip
 import mouse
-from PySide2.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
+from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
 from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
@@ -119,12 +119,13 @@ class MainWindow(QMainWindow):
         # self.main_widget.ddos_dialog.show()
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
         # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
-        print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
+        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
+
         pass
 
     def action_test2(self):
         # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
-        print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
+        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
         pass
 
     def action_memory(self):
@@ -472,7 +473,7 @@ class TabMacro(QWidget):
 
     @Slot()
     def micro_apply(self):
-        edit_list = self.edit_editor.table_edit.edits_copy(int(self.tabs_viewer.doc_viewer.spin.value()))
+        edit_list = self.edit_editor.table_edit.edits_copy(str(self.tabs_viewer.doc_viewer.spin.value()))
         text = self.tabs_viewer.doc_viewer.viewer.toPlainText()
         self.tabs_viewer.doc_viewer.viewer.setPlainText(self.micro_post.apply(text, edit_list))
 
@@ -1259,7 +1260,7 @@ class EditEditor(QWidget):
         self.spin_1.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.combo_opt1 = QComboBox()
         self.combo_opt1.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt1_text = ['일반', '파일', '기타', '요약', '복구']
+        self.combo_opt1_text = ['일반', '파일', '요약', '복구']
         self.combo_opt1.addItems(self.combo_opt1_text)
         self.combo_opt2 = QComboBox()
         self.combo_opt2.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1278,6 +1279,7 @@ class EditEditor(QWidget):
         self.combo_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
         self.combo_opt4_2_2_text = []
         self.combo_opt4_2_3_text = []
+        self.combo_opt4_4_text = ['비고', '지정']
         self.combo_opt4.addItems(self.combo_opt4_1_1_text)
         self.combo_opt1.currentTextChanged.connect(self.combo_opt1_change)
         self.combo_opt2.currentTextChanged.connect(self.combo_opt2_change)
@@ -1321,7 +1323,13 @@ class EditEditor(QWidget):
             self.combo_opt4.setEnabled(True)
             self.combo_opt3.clear()
             self.combo_opt3.addItems(self.combo_opt3_2_text)
-        elif t == '기타' or t == '요약' or t == '복구':
+        elif t == '복구':
+            self.combo_opt3.setEnabled(False)
+            self.combo_opt3.clear()
+            self.combo_opt4.setEnabled(True)
+            self.combo_opt4.clear()
+            self.combo_opt4.addItems(self.combo_opt4_4_text)
+        elif t == '기타' or t == '요약':
             self.combo_opt3.setEnabled(False)
             self.combo_opt4.setEnabled(False)
             self.combo_opt3.clear()
@@ -1333,6 +1341,7 @@ class EditEditor(QWidget):
 
     @Slot(str)
     def combo_opt3_change(self, t):
+        # 일반
         if t == '찾기' or t == '바꾸기':
             self.combo_opt4.clear()
             self.combo_opt4.addItems(self.combo_opt4_1_1_text)
@@ -1344,6 +1353,7 @@ class EditEditor(QWidget):
             self.combo_opt4.setEnabled(True)
             self.combo_opt4.clear()
             self.combo_opt4.addItems(self.combo_opt4_1_3_text)
+        # 파일
         elif t == '본문':
             self.combo_opt4.clear()
             self.combo_opt4.addItems(self.combo_opt4_2_1_text)
@@ -1362,7 +1372,7 @@ class EditEditor(QWidget):
             self.edit_input.setText(t)
 
     def combo_image(self):
-        soup = self.ss.request_soup(f'{core.SITE_URL}/Upload', 'get')
+        soup = self.ss.request_soup('get', f'{core.SITE_URL}/Upload')
         lic = [t.text for t in soup.select('#licenseSelect > option')]
         lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
         cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
@@ -1371,6 +1381,7 @@ class EditEditor(QWidget):
     @Slot()
     def add_to_edit(self):
         # 값 추출
+        string = self.edit_input.text()
         opt1 = self.combo_opt1.currentText()
         opt2 = self.combo_opt2.currentText()
         if self.combo_opt3.isEnabled():
@@ -1382,15 +1393,19 @@ class EditEditor(QWidget):
                 opt4 = ''
             else:
                 opt4 = self.combo_opt4.currentText()
+                if opt4 == '로그':
+                    string = ''
         else:
             opt4 = ''
         insert = self.table_edit.rows_text_insert()
         insert.send(None)
-        insert.send([str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()])
+        insert.send([str(self.spin_1.value()), opt1, opt2, opt3, opt4, string])
         # self.table_edit.rows_insert([[str(self.spin_1.value()), opt1, opt2, opt3, opt4, self.edit_input.text()]])
         self.table_edit.resizeColumnsToContents()
         self.table_edit.setCurrentCell(self.table_edit.rowCount() - 1, 1)
         # 입력 후
+        self.table_edit.sortItems(0, Qt.AscendingOrder)
+        self.table_edit.setCurrentCell(self.table_edit.currentRow(), self.table_edit.currentColumn())
         self.edit_input.clear()
         if opt1 == '일반':
             if opt3 == '바꾸기':
