@@ -8,29 +8,30 @@ EDIT_F = ['index', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
 
 def new_setting():
     if not os.path.isfile('config.ini'):  # 최초 생성
-        config = configparser.ConfigParser()
-        config['login'] = {'UMI': '', 'UA': '', 'ID': '', 'PW': ''}
-        config['setting'] = {'DELAY': 3.0}
-        with open('config.ini', 'w', encoding='utf-8') as configfile:
-            config.write(configfile)
-
-    files = (('doc_list.csv', DOC_F), ('doc_log.csv', DOC_F), ('edit_list.csv', EDIT_F), ('edit_log.csv', EDIT_F))
-    for name, field in files:
+        write_config('config.ini', {'login': {'ID': '', 'PW': '', 'UMI': '', 'UA': ''}, 'work': {'DELAY': '3.0'}})
+    # new list log files
+    for name, field in (('doc_list.csv', DOC_F), ('doc_log.csv', DOC_F),
+                        ('edit_list.csv', EDIT_F), ('edit_log.csv', EDIT_F)):
         if not os.path.isfile(name):  # 최초 생성
             with open(name, 'w', encoding='utf-8', newline='') as csv_file:
                 csv.DictWriter(csv_file, field).writeheader()
 
 
-def read_setting(file_name):
+def write_config(file_name, section_dict):  # 이중 딕셔너리
     config = configparser.ConfigParser()
-    config.read(file_name, encoding='utf-8')
+    config.optionxform = str
+    for section, value in section_dict.items():
+        config[section] = value
+    with open(file_name, 'w', encoding='utf-8') as configfile:
+        config.write(configfile)
 
-    return {'UMI': config['login']['UMI'],
-            'UA': config['login']['UA'],
-            'ID': config['login']['ID'],
-            'PW': config['login']['PW'],
-            'DELAY': float(config['setting']['DELAY'])
-            }
+
+def read_config(file_name):
+    config = configparser.ConfigParser()
+    config.optionxform = str
+    config.read(file_name, encoding='utf-8')
+    print('test')
+    return dict(zip(config.sections(), [dict([v for v in config[section].items()]) for section in config.sections()]))
 
 
 def write_csv(file_name, option, field):

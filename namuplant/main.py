@@ -5,9 +5,10 @@ import psutil
 from urllib import parse
 import pyperclip
 import mouse
-from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel
-from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QTextEdit, QTabWidget, QSplitter, QVBoxLayout, QHBoxLayout
-from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
+from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel, QLineEdit
+from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit
+from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout, QGridLayout
+from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
 from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
@@ -48,6 +49,12 @@ class MainWindow(QMainWindow):
         act_save_doc_list.triggered.connect(self.action_save_doc_list)
         act_save_edit_list = QAction('편집사항 따로 저장', self)
         act_save_edit_list.triggered.connect(self.action_save_edit_list)
+        # 설정 메뉴
+        act_on_top = QAction('항상 위', self)
+        act_on_top.setCheckable(True)
+        act_on_top.toggled.connect(self.action_on_top)
+        act_config = QAction('개인 설정', self)
+        act_config.triggered.connect(self.action_config)
         # 실험 메뉴
         act_test = QAction('실험', self)
         act_test.triggered.connect(self.action_test)
@@ -59,12 +66,14 @@ class MainWindow(QMainWindow):
         menu_bar = self.menuBar()
         menu_file = menu_bar.addMenu('파일')
         menu_file.addActions([act_load_doc_list, act_load_edit_list, act_save_doc_list, act_save_edit_list])
+        menu_option = menu_bar.addMenu('설정')
+        menu_option.addActions([act_on_top, act_config])
         menu_test = menu_bar.addMenu('테스트')
         menu_test.addActions([act_test, act_test2, act_memory])
-
-        # 메인
+        # 메인 위젯 구동
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
+        # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')
 
@@ -111,6 +120,13 @@ class MainWindow(QMainWindow):
             wc.send(dict(zip(cols, [row[i] for i in range(len(row))])))  # 핵심
         wc.close()
 
+    def action_on_top(self, check):
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, check)
+        self.show()
+
+    def action_config(self):
+        self.main_widget.configure()
+
     def action_test(self):
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
         # print(process.memory_info().rss / 1024 / 1024)
@@ -120,7 +136,7 @@ class MainWindow(QMainWindow):
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
         # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
         # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
-
+        print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
         pass
 
     def action_test2(self):
@@ -180,7 +196,7 @@ class DDOSDialog(QDialog):
         QWebEngineProfile.defaultProfile().setHttpAcceptLanguage('ko')
         self.browser = QWebEngineView()
         self.browser.setStyleSheet('border: 1px solid gray;')
-        self.browser.loadStarted.connect(self.test)
+        # self.browser.loadStarted.connect(self.test)
         # self.browser.loadFinished.connect(self.test2)
         self.btn = QPushButton('완료')
         self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -195,6 +211,7 @@ class DDOSDialog(QDialog):
         self.setLayout(box_v)
         # self.setWindowModality(Qt.ApplicationModal)
         self.setWindowTitle('reCAPTCHA')
+        self.setWindowIcon(QIcon('icon.png'))
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
         self.resize(480, 600)
 
@@ -205,9 +222,76 @@ class DDOSDialog(QDialog):
         # self.browser.setHtml("<html><head></head><body><h1>ciao</h1></body></html>")
 
 
+class ConfigDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.lbl_id = QLabel('계정명')
+        self.lbl_id.setAlignment(Qt.AlignCenter)
+        self.lbl_pw = QLabel('비밀번호')
+        self.lbl_pw.setAlignment(Qt.AlignCenter)
+        self.lbl_umi = QLabel('umi 쿠키')
+        self.lbl_umi.setAlignment(Qt.AlignCenter)
+        self.lbl_ua = QLabel('유저 에이전트')
+        self.lbl_ua.setAlignment(Qt.AlignCenter)
+        self.lbl_delay = QLabel('저속 간격')
+        self.lbl_delay.setAlignment(Qt.AlignCenter)
+        self.line_id = QLineEdit()
+        self.line_pw = QLineEdit()
+        self.line_pw.setEchoMode(QLineEdit.PasswordEchoOnEdit)
+        self.line_umi = QLineEdit()
+        self.line_ua = QLineEdit()
+        self.line_delay = QDoubleSpinBox()
+        self.line_delay.setMinimum(3)
+        self.line_delay.setDecimals(1)
+        self.line_delay.setSuffix('초')
+        self.line_delay.setSingleStep(0.1)
+        self.btn_save = QPushButton('저장')
+        self.btn_save.clicked.connect(self.config_save)
+        self.btn_cancel = QPushButton('취소')
+        self.btn_cancel.clicked.connect(self.reject)
+        grid = QGridLayout()
+        grid.addWidget(self.lbl_id, 0, 0, 1, 2)
+        grid.addWidget(self.line_id, 0, 2, 1, 6)
+        grid.addWidget(self.lbl_pw, 1, 0, 1, 2)
+        grid.addWidget(self.line_pw, 1, 2, 1, 6)
+        grid.addWidget(self.lbl_umi, 2, 0, 1, 2)
+        grid.addWidget(self.line_umi, 2, 2, 1, 6)
+        grid.addWidget(self.lbl_ua, 3, 0, 1, 2)
+        grid.addWidget(self.line_ua, 3, 2, 1, 6)
+        grid.addWidget(self.lbl_delay, 4, 0, 1, 2)
+        grid.addWidget(self.line_delay, 4, 2, 1, 6)
+        grid.addWidget(self.btn_save, 5, 4, 1, 2)
+        grid.addWidget(self.btn_cancel, 5, 6, 1, 2)
+        self.setLayout(grid)
+        self.setWindowTitle('개인 설정')
+        self.setWindowIcon(QIcon('icon.png'))
+        self.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.resize(400, 160)
+
+        self.config = storage.read_config('config.ini')
+
+    def config_show(self):
+        self.line_id.setText(self.config['login']['ID'])
+        self.line_pw.setText(self.config['login']['PW'])
+        self.line_umi.setText(self.config['login']['UMI'])
+        self.line_ua.setText(self.config['login']['UA'])
+        self.line_ua.setCursorPosition(0)
+        self.line_delay.setValue(float(self.config['work']['DELAY']))
+
+    def config_save(self):
+        self.config = {'login': {'ID': self.line_id.text(), 'PW': self.line_pw.text(),
+                                 'UMI': self.line_umi.text(), 'UA': self.line_ua.text()},
+                       'work': {'DELAY': self.line_delay.value()}}
+        storage.write_config('config.ini', self.config)
+        self.accept()
+
+
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
+        # config dialog
+        self.config_dialog = ConfigDialog()
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
@@ -216,7 +300,7 @@ class MainWidget(QWidget):
         # self.set_main_label('namuplant: a bot for namu.wiki')
 
         # self.tabs = QTabWidget()
-        self.tab_macro = TabMacro()
+        self.tab_macro = TabMacro(self.config_dialog.config)
         self.tab_macro.sig_main_label.connect(self.set_main_label)
         # self.tab_b = TabMicro()
         # self.tab_b.sig_main_label.connect(self.set_main_label)
@@ -248,12 +332,20 @@ class MainWidget(QWidget):
         if ddd == QDialog.Accepted:
             obj.is_ddos_checked = True
 
+    def configure(self):
+        self.config_dialog.config_show()
+        ddd = self.config_dialog.exec_()
+        if ddd == QDialog.Accepted:
+            self.tab_macro.iterate_post.load_config(self.config_dialog.config)
+            self.tab_macro.micro_post.load_config(self.config_dialog.config)
+
 
 class TabMacro(QWidget):
     sig_main_label = Signal(str)
 
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+        self.config = config
         self.doc_board = DocBoard()
         self.tabs_viewer = TabViewers()
         self.edit_editor = EditEditor()
@@ -340,6 +432,7 @@ class TabMacro(QWidget):
         # thread iterate
         self.th_iterate = QThread()
         self.iterate_post = core.Iterate()
+        self.iterate_post.load_config(self.config)
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.sig_label_text.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
@@ -353,6 +446,7 @@ class TabMacro(QWidget):
         # thread micro
         self.th_micro = QThread()
         self.micro_post = core.Micro()
+        self.micro_post.load_config(self.config)
         self.micro_post.finished.connect(self.micro_finish)
         self.micro_post.sig_label_text.connect(self.str_to_main)
         self.micro_post.sig_text_view.connect(self.tabs_viewer.doc_viewer.set_text_view)
@@ -1279,7 +1373,7 @@ class EditEditor(QWidget):
         self.combo_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
         self.combo_opt4_2_2_text = []
         self.combo_opt4_2_3_text = []
-        self.combo_opt4_4_text = ['비고', '지정']
+        self.combo_opt4_4_text = ['로그', '지정']
         self.combo_opt4.addItems(self.combo_opt4_1_1_text)
         self.combo_opt1.currentTextChanged.connect(self.combo_opt1_change)
         self.combo_opt2.currentTextChanged.connect(self.combo_opt2_change)

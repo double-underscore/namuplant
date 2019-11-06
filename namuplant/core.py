@@ -31,20 +31,24 @@ class SeedSession(QObject):
     def __init__(self):  # 반복 필요 없는 것
         super().__init__()
         self.is_ddos_checked = False
-        self.CONFIG = storage.read_setting('config.ini')
         self.URL_LOGIN = f'{SITE_URL}/member/login'
         self.s = requests.Session()
 
+    def load_config(self, config):
+        # config = storage.read_config('config.ini')
+        self.INFO = config['login']
+        self.DELAY = float(config['work']['DELAY'])
+
     def login(self):
         self.s = requests.Session()
-        self.s.headers.update({'user-agent': self.CONFIG['UA']})
+        self.s.headers.update({'user-agent': self.INFO['UA']})
         self.request_soup('get', f'{SITE_URL}/edit/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8')
-        self.s.cookies.set('umi', self.CONFIG['UMI'], domain=f'.{SITE_URL[8:]}')
+        self.s.cookies.set('umi', self.INFO['UMI'], domain=f'.{SITE_URL[8:]}')
         soup = self.request_soup('post', self.URL_LOGIN,
-                                 data={'username': self.CONFIG['ID'], 'password': self.CONFIG['PW']})
-        info = soup.select('nav > ul > li > div > div > div')
-        if info[1].text == 'Member':
-            print(f'login SUCCESS {info[0].text}')
+                                 data={'username': self.INFO['ID'], 'password': self.INFO['PW']})
+        member = soup.select('nav > ul > li > div > div > div')
+        if member[1].text == 'Member':
+            print(f'login SUCCESS {member[0].text}')
         else:
             print('login FAILURE')
 
@@ -54,6 +58,7 @@ class SeedSession(QObject):
             try:
                 r = self.s.request(method, url, headers={'referer': url}, cookies=self.s.cookies, timeout=5, **kwargs)
                 # r = func(url, headers={'referer': url}, cookies=self.s.cookies, timeout=5, **kwargs)
+                print(r.status_code)
                 if r.status_code == 429:  # too many requests
                     self.is_ddos_checked = False
                     self.sig_check_ddos.emit(self)
@@ -88,7 +93,7 @@ class ReqPost(SeedSession):
             soup = self.request_soup('get', doc_url)
             baserev = soup.find(attrs={'name': 'baserev'})['value']
             identifier = soup.find(attrs={'name': 'identifier'})['value']
-            if identifier == f'm:{self.CONFIG["ID"]}':  # 로그인 안 되어 있으면 로그인
+            if identifier == f'm:{self.INFO["ID"]}':  # 로그인 안 되어 있으면 로그인
                 break
             else:
                 self.login()
@@ -246,7 +251,8 @@ class ReqPost(SeedSession):
     @staticmethod
     def korean_consonant(text):
         share = (ord(text[0]) - 44032) // 588
-        consonant = ['ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ', 'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+        consonant = ['ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ', 'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ',
+                     'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
         if 0 <= share <= 18:
             return consonant[share]
 
@@ -331,7 +337,7 @@ class Iterate(ReqPost):
                             if self.edit_dict[edit_index][0][1] == '복구':
                                 post_error = self.revert(self.doc_list[i][0], self.edit_dict[edit_index],
                                                          self.doc_list[i][2])
-                                post_rev = ''
+                                post_rev = 'evert'
                             else:  # 편집
                                 post_rev, post_error = self.edit(self.doc_list[i][0], self.doc_list[i][1],
                                                                  self.edit_dict[edit_index])  # 포스트
@@ -340,7 +346,7 @@ class Iterate(ReqPost):
                                              'index': edit_log_index, 'error': post_error})
                         if self.index_speed == 1:  # 저속 옵션
                             t2 = time.time()
-                            waiting = self.CONFIG['DELAY'] - (t2 - t1)
+                            waiting = self.DELAY - (t2 - t1)
                             if waiting > 0:
                                 time.sleep(waiting)
                             t1 = time.time()
@@ -382,7 +388,7 @@ class Iterate(ReqPost):
         return baserev, error
 
     def revert(self, doc_code, edit_list, rev_on_doc):
-        rev, summary = '', ''
+        rev, summary, error_log = '', '', ''
         for edit in edit_list:
             if edit[1] == '복구':
                 if edit[4] == '로그':
@@ -395,16 +401,26 @@ class Iterate(ReqPost):
         if not rev:
             error_log = '되돌릴 리비전이 지정되어 있지 않습니다.'
         else:
-            soup = self.request_soup('post', f'{SITE_URL}/revert/{doc_code}?rev={rev}',
-                                     data={'rev': rev, 'identifier': self.CONFIG['ID'], 'log': summary})
-            error_log = self.has_alert(soup)
+            while True:
+                soup = self.request_soup('post', f'{SITE_URL}/revert/{doc_code}',
+                                         data={'rev': rev, 'identifier': f'm:{self.INFO["ID"]}', 'log': summary})
+                print(soup.text)
+                if soup.h1.text == '오류':
+                    error_temp = soup.h1.next_sibling.next_sibling.text
+                    if error_temp == 'reCAPTCHA 인증이 실패했습니다.':  # 로그인 확인용
+                        self.login()
+                    else:
+                        error_log = error_temp
+                        break
+                else:
+                    break
         return error_log
 
     def upload(self, file_dir, doc_name, text, summary):
         doc_url = f'{SITE_URL}/Upload'
         if not summary:
             summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
-        multi_data = {'baserev': '0', 'identifier': f'm:{self.CONFIG["ID"]}', 'document': doc_name, 'log': summary,
+        multi_data = {'baserev': '0', 'identifier': f'm:{self.INFO["ID"]}', 'document': doc_name, 'log': summary,
                       'text': text}
         try:
             with open(file_dir, 'rb') as f:
