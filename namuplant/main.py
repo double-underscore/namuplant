@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import winsound
 import psutil
 from urllib import parse
 import pyperclip
@@ -10,7 +11,7 @@ from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit
 from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout, QGridLayout
 from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap
+from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap, QTextCursor
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from . import core, storage
@@ -136,7 +137,8 @@ class MainWindow(QMainWindow):
         # self.main_widget.tab_macro.btn_get.setEnabled(False)
         # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
         # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
-        print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
+        # print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
+        # self.main_widget.tab_macro.tabs_viewer.doc_viewer.viewer.find("원소")
         pass
 
     def action_test2(self):
@@ -756,9 +758,10 @@ class TableDoc(TableEnhanced):
         self.horizontalHeader().setMinimumSectionSize(34)
         # self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.horizontalHeader().setStretchLastSection(True)
-        self.horizontalHeader().sectionResized.connect(self.resize_section)
+        # self.horizontalHeader().sectionResized.connect(self.resize_section)
         self.verticalHeader().setStyleSheet('font: 7pt \'맑은 고딕\'')
         self.horizontalScrollBar().setVisible(True)
+        # self.setSortingEnabled(True)
         self.hideColumn(0)
         self.col_editable = (False, False, False)
         self.col_clickable = (False, True, True)
@@ -882,11 +885,11 @@ class TableDoc(TableEnhanced):
 
     @Slot(int, int)
     def resize_to_splitter(self, w, _):
-        # pass
-        vh = self.verticalHeader().width()
-        vs = {True: self.verticalScrollBar().width(), False: 0}[self.verticalScrollBar().isVisible()]
-        if vh + vs + self.columnWidth(1) + self.columnWidth(2) > w:  # 축소
-            self.setColumnWidth(1, w - vh - vs)
+        pass
+        # vh = self.verticalHeader().width()
+        # vs = {True: self.verticalScrollBar().width(), False: 0}[self.verticalScrollBar().isVisible()]
+        # if vh + vs + self.columnWidth(1) + self.columnWidth(2) > w:  # 축소
+        #     self.setColumnWidth(1, w - vh - vs)
 
         # elif vh + vs + self.columnWidth(1) + self.columnWidth(2) < w:  # 확대
         #     self.setColumnWidth(1, w - vh - vs - self.columnWidth(2) - 2)
@@ -966,6 +969,7 @@ class LineEnhanced(QLineEdit):
             self.undo()
         elif e.key() == Qt.Key_Down:
             self.redo()
+        # todo 빈칸은 히스토리에 포함 안 시키기
 
 
 class DocBoard(QWidget):
@@ -1098,9 +1102,17 @@ class DocViewer(QWidget):
         self.viewer.setPlaceholderText('미리보기 화면')
         # self.viewer.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.viewer.setReadOnly(True)
+        # finder
+        self.find_input = LineEnhanced()
+        self.find_input.returnPressed.connect(self.run_find)
+        self.find_input.setPlaceholderText("검색")
+        self.find_input.setHidden(True)
+        find_input_show = QShortcut(QKeySequence('Ctrl+F'), self, context=Qt.WidgetWithChildrenShortcut)
+        find_input_show.activated.connect(self.show_find_input)  # 한 칸 위로
         # box main
         box_v = QVBoxLayout()
         box_v.addWidget(self.tabs)
+        box_v.addWidget(self.find_input)
         box_v.addWidget(self.viewer)
         box_v.setContentsMargins(0, 0, 0, 0)
         box_v.setSpacing(5)
@@ -1130,6 +1142,8 @@ class DocViewer(QWidget):
         self.combo_info.clear()
         if clear:
             self.viewer.clear()
+            self.find_input.setHidden(True)
+            self.find_input.clear()
             self.combo_info.setEnabled(False)
             self.btn_edit.setEnabled(False)
             self.btn_close.setEnabled(False)
@@ -1138,6 +1152,26 @@ class DocViewer(QWidget):
     @staticmethod
     def get_cat_from(text):
         return re.findall(r'\[\[(분류: ?.*?)\]\]', text)
+
+    @Slot()
+    def show_find_input(self):
+        # self.find_input.setHidden(not self.find_input.isHidden())
+        if self.find_input.isHidden():
+            self.find_input.setHidden(False)
+            self.find_input.setFocus()
+        else:
+            self.find_input.setHidden(True)
+            self.find_input.clear()
+
+    def run_find(self):
+        for i in range(2):
+            if self.viewer.find(self.find_input.text()):
+                break
+            else:
+                if i == 0:
+                    self.viewer.moveCursor(QTextCursor.Start)
+                elif i == 1:
+                    winsound.Beep(500, 50)
 
 
 class DiffViewer(QWidget):
