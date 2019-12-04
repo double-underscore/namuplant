@@ -277,7 +277,7 @@ class Iterate(ReqPost):
         # logged_in = self.login()
         # self.sig_label_text.emit(logged_in)
         self.is_quit = False
-        self.doc_list = []
+        self.doc_list = []  # main.iterate_start
         self.edit_dict = {}
         self.index_speed = 0
 
@@ -518,7 +518,7 @@ class Micro(ReqPost):
         self.finished.emit()
 
     def edit(self):
-        # todo 편집 루프 해소
+        # todo 편집 루프 제네레이터로 변경
         # todo 비교 시 취소하면 편집 종료되는 문제
 
         self.do_post = False
@@ -698,49 +698,3 @@ class ReqGet(SeedSession):
                         if not tail:
                             break
         self.sig_label_text.emit(f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-
-    def get_cat_old(self, doc_code):
-        total = 0
-        n = 0
-        doc_name = parse.unquote(doc_code)
-        btn_done = 0
-        added = ''
-        soup = self.request_soup('get', f'{SITE_URL}/w/{doc_code}')
-        divs = soup.select('div.wiki-content > div')
-        h2s = list(map(lambda x: x.text[x.text.rfind(' ') + 1:], soup.select('h2.wiki-heading')))
-        # divs 0 문서내용 1 문서수 2 목록 3 문서수 4 버튼(있으면) 5 목록 6 버튼(있으면) ....
-        for i in range(len(divs)):
-            is_list = divs[i].select('div > ul > li > a')
-            is_btn = divs[i].select('a.btn')
-            if is_btn:  # 버튼. 같은 버튼이 목록 앞뒤로 중복
-                if btn_done == 0:
-                    added = divs[i].select('a')[1].get('href')
-                    btn_done = 1
-                elif btn_done == 1:
-                    btn_done = 0
-            elif is_list:  # 목록
-                namespace = h2s[n]
-                n += 1
-                self.sig_label_text.emit(f'{doc_name}의 하위 {namespace} 가져오는 중... ( +{total} )\n')
-                for v in is_list:  # 첫번째 페이지 획득
-                    yield v.get('href')[3:]
-                    total += 1
-                while True:  # 한 페이지
-                    if self.is_quit:
-                        self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
-                                                 f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-                        return
-                    if added:
-                        added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
-                        self.sig_label_text.emit(
-                            f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
-                        soup_new = self.request_soup('get', f'{SITE_URL}/w/{doc_code}{added}')
-                        divs_new = soup_new.select('div.wiki-content > div')
-                        for v in divs_new[i].select('div > ul > li > a'):
-                            yield v.get('href')[3:]
-                            total += 1
-                        added = divs_new[i - 1].select('a')[1].get('href')  # 버튼에서 값 추출
-                    else:
-                        break
-        self.sig_label_text.emit(f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-        return

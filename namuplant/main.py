@@ -11,7 +11,7 @@ from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit
 from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout, QGridLayout
 from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap, QTextCursor
+from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap, QTextCursor, QTextDocument
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 from . import core, storage
@@ -30,7 +30,6 @@ def trace(func):
     return wrapper
 
 # todo 미러 사이트를 통한 목록 필터링
-# todo 목록 중복 제거
 # todo 파일 문서명 일괄 변경 (접두 접미)
 
 
@@ -129,6 +128,7 @@ class MainWindow(QMainWindow):
         self.main_widget.configure()
 
     def action_test(self):
+        t1 = time.time()
         # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
         # print(process.memory_info().rss / 1024 / 1024)
         # self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
@@ -139,6 +139,8 @@ class MainWindow(QMainWindow):
         # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
         # print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
         # self.main_widget.tab_macro.tabs_viewer.doc_viewer.viewer.find("원소")
+        # self.main_widget.tab_macro.doc_board.table_doc.dedupl()
+        print(time.time() - t1)
         pass
 
     def action_test2(self):
@@ -516,7 +518,7 @@ class TabMacro(QWidget):
         # print(time.time() - self.t1)
         self.doc_board.table_doc.resizeColumnsToContents()
         self.doc_board.table_doc.setCurrentCell(self.doc_board.table_doc.rowCount() - 1, 1)
-        self.doc_board.table_doc.setFocus()
+        # self.doc_board.table_doc.setFocus()
         self.req_get.is_quit = False
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
@@ -604,7 +606,6 @@ class TableEnhanced(QTableWidget):
     def __init__(self):
         super().__init__()
         self.setAlternatingRowColors(True)
-        self.setGridStyle(Qt.DotLine)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.verticalHeader().setDefaultSectionSize(23)
         self.horizontalHeader().setMinimumSectionSize(30)
@@ -686,10 +687,10 @@ class TableEnhanced(QTableWidget):
             else:
                 col_origin = self.currentColumn()
                 rows_list.reverse()
-                t = time.time()
+                # t = time.time()
                 for r in rows_list:
                     self.removeRow(r)
-                print(time.time() - t)
+                # print(time.time() - t)
                 pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
                 pos_after += 0 if self.rowCount() - 1 == pos_after else 1
                 self.setCurrentCell(pos_after, col_origin)
@@ -753,11 +754,13 @@ class TableDoc(TableEnhanced):
     def __init__(self):
         super().__init__()
         self.setColumnCount(3)
+        self.setGridStyle(Qt.DotLine)
         self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
         self.horizontalHeader().setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.horizontalHeader().setMinimumSectionSize(34)
         # self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().sectionDoubleClicked.connect(self.dedupl)
         # self.horizontalHeader().sectionResized.connect(self.resize_section)
         self.verticalHeader().setStyleSheet('font: 7pt \'맑은 고딕\'')
         self.horizontalScrollBar().setVisible(True)
@@ -827,6 +830,25 @@ class TableDoc(TableEnhanced):
         if self.columnWidth(1) > 450:
             self.setColumnWidth(1, 450)
 
+    @Slot(int)
+    def dedupl(self, col=0):
+        temp = set()
+        rows_list = []
+        ii = 0
+        for row in self.rows_text_copy():
+            code = row[0]
+            if code in temp:
+                rows_list.append(ii)
+            else:
+                temp.add(code)
+                ii += 1
+        self.rows_delete(rows_list)
+        if len(rows_list) == 0:
+            self.sig_main_label.emit('중복되는 표제어가 존재하지 않습니다.')
+        else:
+            self.sig_main_label.emit(f'중복되는 표제어를 {len(rows_list)}개 제거했습니다.')
+        self.set_current(0)
+
     @Slot(str)
     def insert_edit_index(self, edit_index):
         where_to = self.currentRow()
@@ -878,11 +900,6 @@ class TableDoc(TableEnhanced):
     def insert_edit_9(self):
         self.insert_edit_index('9')
 
-    @classmethod
-    def dedup(cls, x):
-        # return dict.fromkeys(x)
-        return list(set(x))
-
     @Slot(int, int)
     def resize_to_splitter(self, w, _):
         pass
@@ -923,6 +940,7 @@ class TableEdit(TableEnhanced):
         self.horizontalHeader().setStretchLastSection(True)
         self.verticalHeader().setVisible(False)
         self.resizeColumnsToContents()
+        self.setGridStyle(Qt.DashLine)
         # self.resizeRowsToContents()
         # self.sizePolicy().setVerticalStretch(7)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -963,13 +981,22 @@ class LineEnhanced(QLineEdit):
         super().focusInEvent(e)
         self.focused.emit()
 
+    def undo(self):
+        super().undo()
+        if self.text() == '':
+            super().undo()
+
+    def redo(self):
+        super().redo()
+        if self.text() == '':
+            super().redo()
+
     def keyPressEvent(self, e):
         super().keyPressEvent(e)
         if e.key() == Qt.Key_Up:
             self.undo()
         elif e.key() == Qt.Key_Down:
             self.redo()
-        # todo 빈칸은 히스토리에 포함 안 시키기
 
 
 class DocBoard(QWidget):
@@ -978,6 +1005,11 @@ class DocBoard(QWidget):
     def __init__(self):
         super().__init__()
         self.table_doc = TableDoc()
+        self.table_doc.setStyleSheet("""
+            QTableWidget::item:selected{
+                background-color: #0078d7;
+                color: white;}
+            """)
         self.combo_option = QComboBox(self)
         self.combo_option.addItems(['1개', '역링크', '분류', '이미지'])
         self.combo_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1033,6 +1065,23 @@ class DocBoard(QWidget):
         self.table_doc.resizeColumnsToContents()
         self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
         self.table_doc.setFocus()
+
+
+class LineFind(LineEnhanced):
+    sig_find = Signal(str, int)
+
+    def __init__(self):
+        super().__init__()
+        find_backward = QShortcut(QKeySequence('Shift+Return'), self, context=Qt.WidgetShortcut)
+        find_backward.activated.connect(self.find_backward)
+
+    def keyPressEvent(self, e):
+        super().keyPressEvent(e)
+        if e.key() == Qt.Key_Return:
+            self.sig_find.emit(self.text(), 0)
+
+    def find_backward(self):
+        self.sig_find.emit(self.text(), 1)
 
 
 class DocViewer(QWidget):
@@ -1100,12 +1149,17 @@ class DocViewer(QWidget):
         # viewer
         self.viewer = QTextEdit()
         self.viewer.setPlaceholderText('미리보기 화면')
+        self.viewer.setStyleSheet("""
+            QTextEdit{
+                selection-background-color: #0078d7; 
+                selection-color: white;}        
+            """)
         # self.viewer.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.viewer.setReadOnly(True)
         # finder
-        self.find_input = LineEnhanced()
-        self.find_input.returnPressed.connect(self.run_find)
-        self.find_input.setPlaceholderText("검색")
+        self.find_input = LineFind()
+        self.find_input.sig_find.connect(self.run_find)
+        self.find_input.setPlaceholderText("찾기")
         self.find_input.setHidden(True)
         find_input_show = QShortcut(QKeySequence('Ctrl+F'), self, context=Qt.WidgetWithChildrenShortcut)
         find_input_show.activated.connect(self.show_find_input)  # 한 칸 위로
@@ -1163,9 +1217,14 @@ class DocViewer(QWidget):
             self.find_input.setHidden(True)
             self.find_input.clear()
 
-    def run_find(self):
+    @Slot(str, int)
+    def run_find(self, text, order):
+        if order == 0:
+            order = QTextDocument.FindFlag()
+        else:
+            order = QTextDocument.FindBackward
         for i in range(2):
-            if self.viewer.find(self.find_input.text()):
+            if self.viewer.find(text, order):
                 break
             else:
                 if i == 0:
@@ -1381,7 +1440,13 @@ class EditEditor(QWidget):
         box_edit_combos = QHBoxLayout()
         # table edit
         self.table_edit = TableEdit()
-        self.table_edit.setStyleSheet('font: 10pt \'Segoe UI\'')
+        self.table_edit.setStyleSheet("""
+            QTableWidget{
+                font: 10pt \'Segoe UI\'}
+            QTableWidget::item:selected{
+                background-color: #0078d7;
+                color: white;}
+            """)
         # edit options
         self.spin_1 = QSpinBox()
         self.spin_1.setMinimum(1)
