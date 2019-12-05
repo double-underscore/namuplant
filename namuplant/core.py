@@ -207,13 +207,24 @@ class ReqPost(SeedSession):
                         except re.error:
                             # print('regex error!')
                             continue
+                    elif option_temp == '역링크':
+                        text = re.sub(rf'\[(?i:include)\({re.escape(find_temp)}(?P<after>.*?\)\])',
+                                      rf'[include({edit[5]}\g<after>', text)  # 인클루드 처리
+                        text = re.sub(rf'\[\[{re.escape(find_temp)}(?P<after>\||\]|#| +)',
+                                      rf'[[{edit[5]}\g<after>', text)  # 기본
+                        text = re.sub(rf'\[\[(?P<same>{edit[5]})\|(?P=same)\]\]', rf'[[{edit[5]}]]', text)  # 중복
+
+                    elif option_temp == '분류:':
+                        text = re.sub(rf'\[\[분류: ?{re.escape(find_temp)}(?P<blur>#blur)?\]\]',
+                                      rf'[[분류:{edit[5]}\g<blur>]]', text)
                 elif edit[3] == '넣기':
                     if edit[4] == '맨 앞':
                         text = f'{edit[5]}\n{text}'
                     elif edit[4] == '맨 뒤':
                         text = f'{text}\n{edit[5]}'
-                    elif edit[4] == '분류':
-                        text = re.sub(r'(\[\[분류:.*?\]\].*?)(\n|$)', rf'\g<1>{edit[5]}\g<2>', text)
+                    elif edit[4] == '분류 뒤':
+                        text = re.sub(r'(?P<base>\[\[분류:.*?\]\].*?)(?P<after>\n|$)',
+                                      rf'\g<base>{edit[5]}\g<after>', text)
             elif edit[1] == '기타':
                 pass
             elif edit[1] == '요약':  # 편집요약
@@ -319,7 +330,7 @@ class Iterate(ReqPost):
                     for row in self.edit_dict[edit_index]:
                         edit_logger.send({'index': edit_log_index,
                                           'opt1': row[1], 'opt2': row[2], 'opt3': row[3], 'opt4': row[4], 'edit': row[5]})
-                elif self.doc_list[i][0][0] == '^':  # 중단자
+                elif self.doc_list[i][0][0] == '!':  # 중단자
                     self.sig_label_text.emit('작업이 중단되었습니다.')
                     self.sig_doc_remove.emit(i - deleted)
                     break
@@ -328,7 +339,7 @@ class Iterate(ReqPost):
                         label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
                         self.sig_label_text.emit(label)
 
-                        if self.doc_list[i][0][0] == '@':  # 파일. 0번열의 0번째 문자가 @
+                        if self.doc_list[i][0][0] == '$':  # 파일. 0번열의 0번째 문자가 @
                             post_error = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], upload_t, upload_s)
                             doc_logger.send({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                              'rev': f'r0', 'time': self.time_doc_log(),
@@ -492,7 +503,7 @@ class Micro(ReqPost):
     def view(self):
         editable = False
         doc_name = parse.unquote(self.doc_code)
-        if self.doc_code[0] == '@':  # 파일
+        if self.doc_code[0] == '$':  # 파일
             if len(doc_name) > 50:
                 doc_name = f'...{doc_name[-50:]}'
             label = f'\'{doc_name[1:]}\' 파일을 열람중입니다.'
@@ -501,14 +512,14 @@ class Micro(ReqPost):
             if self.doc_code[0] == '#':  # 편집 지시자
                 label = f'{doc_name[1:]}번 편집사항을 열람 중입니다.'
                 text = f'{doc_name[1:]}번 편집사항'
-            elif self.doc_code[0] == '^':  # 중단자
+            elif self.doc_code[0] == '!':  # 중단자
                 label = '중단점을 열람 중입니다.'
                 text = '중단점'
             else:  # 문서
                 text, _, _, _ = self.get_text(self.doc_code)
                 # data = self.get_text(self.doc_code)
                 if text:
-                    label = f'\'{doc_name}\' 문서를 열람 중입니다.'
+                    label = f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 열람 중입니다.'
                     editable = True
                 else:  # 문서 존재 X
                     label = f'\'{doc_name}\' 문서는 존재하지 않습니다.'
@@ -527,11 +538,11 @@ class Micro(ReqPost):
         # data = self.get_text(self.doc_code)
         doc_name = parse.unquote(self.doc_code)
         if error:  # 권한 X
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집할 권한이 없습니다.')
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 편집할 권한이 없습니다.')
         else:
             self.sig_enable_iterate.emit(False)
             self.sig_text_edit.emit(text_before)
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집 중입니다.')
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 편집 중입니다.')
             while not self.do_post:
                 time.sleep(0.1)
             if self.do_cancel:

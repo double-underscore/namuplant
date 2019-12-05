@@ -30,7 +30,6 @@ def trace(func):
     return wrapper
 
 # todo 미러 사이트를 통한 목록 필터링
-# todo 파일 문서명 일괄 변경 (접두 접미)
 
 
 class MainWindow(QMainWindow):
@@ -49,11 +48,13 @@ class MainWindow(QMainWindow):
         act_save_doc_list.triggered.connect(self.action_save_doc_list)
         act_save_edit_list = QAction('편집사항 따로 저장', self)
         act_save_edit_list.triggered.connect(self.action_save_edit_list)
+        act_name_edit = QAction('이미지 표제어 변경', self)
+        act_name_edit.triggered.connect(self.action_name_edit)
         # 설정 메뉴
         act_on_top = QAction('항상 위', self)
         act_on_top.setCheckable(True)
         act_on_top.toggled.connect(self.action_on_top)
-        act_config = QAction('개인 설정', self)
+        act_config = QAction('개인 정보', self)
         act_config.triggered.connect(self.action_config)
         # 실험 메뉴
         act_test = QAction('실험', self)
@@ -66,6 +67,8 @@ class MainWindow(QMainWindow):
         menu_bar = self.menuBar()
         menu_file = menu_bar.addMenu('파일')
         menu_file.addActions([act_load_doc_list, act_load_edit_list, act_save_doc_list, act_save_edit_list])
+        menu_file.addSeparator()
+        menu_file.addActions([act_name_edit])
         menu_option = menu_bar.addMenu('설정')
         menu_option.addActions([act_on_top, act_config])
         menu_test = menu_bar.addMenu('테스트')
@@ -125,7 +128,10 @@ class MainWindow(QMainWindow):
         self.show()
 
     def action_config(self):
-        self.main_widget.configure()
+        self.main_widget.show_config_dialog()
+
+    def action_name_edit(self):
+        self.main_widget.show_name_edit_dialog()
 
     def action_test(self):
         t1 = time.time()
@@ -146,6 +152,7 @@ class MainWindow(QMainWindow):
     def action_test2(self):
         # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
         # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
+        # self.main_widget.tab_macro.doc_board.table_doc.edit_file_name
         pass
 
     def action_memory(self):
@@ -219,12 +226,6 @@ class DDOSDialog(QDialog):
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
         self.resize(480, 600)
 
-    @Slot()
-    def test(self):
-        # self.abc = {True: False, False: True}[self.abc]
-        print(self.abc)
-        # self.browser.setHtml("<html><head></head><body><h1>ciao</h1></body></html>")
-
 
 class ConfigDialog(QDialog):
     def __init__(self):
@@ -267,7 +268,7 @@ class ConfigDialog(QDialog):
         grid.addWidget(self.btn_save, 5, 4, 1, 2)
         grid.addWidget(self.btn_cancel, 5, 6, 1, 2)
         self.setLayout(grid)
-        self.setWindowTitle('개인 설정')
+        self.setWindowTitle('개인 정보')
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
@@ -275,7 +276,7 @@ class ConfigDialog(QDialog):
 
         self.config = storage.read_config('config.ini')
 
-    def config_show(self):
+    def config_show_text(self):
         self.line_id.setText(self.config['login']['ID'])
         self.line_pw.setText(self.config['login']['PW'])
         self.line_umi.setText(self.config['login']['UMI'])
@@ -291,6 +292,42 @@ class ConfigDialog(QDialog):
         self.accept()
 
 
+class NameEditDialog(QDialog):
+    sig_name_edit = Signal(str, int)
+
+    def __init__(self):
+        super().__init__()
+        self.cmb_option = QComboBox(self)
+        self.cmb_option.addItems(['접두', '접미'])
+        self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_option.setMinimumWidth(70)
+        self.cmb_option.setMaximumWidth(100)
+        self.line_text = LineEnhanced()
+        self.line_text.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_ok = QPushButton('실행')
+        self.btn_ok.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_ok.setMinimumWidth(72)
+        self.btn_ok.setMaximumWidth(100)
+        self.btn_ok.clicked.connect(self.emit_sig_name_edit)
+
+        box_h = QHBoxLayout()
+        box_h.addWidget(self.line_text)
+        box_h.addWidget(self.cmb_option)
+        box_h.addWidget(self.btn_ok)
+        box_h.setStretchFactor(self.cmb_option, 1)
+        box_h.setStretchFactor(self.line_text, 4)
+        box_h.setStretchFactor(self.btn_ok, 1)
+        box_h.setContentsMargins(3, 3, 3, 3)
+        self.setLayout(box_h)
+        self.setWindowTitle('이미지 파일 표제어 일괄 변경')
+        self.setWindowIcon(QIcon('icon.png'))
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        # self.resize(300, 40)
+
+    def emit_sig_name_edit(self):
+        self.sig_name_edit.emit(self.line_text.text(), self.cmb_option.currentIndex())
+
+
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -301,6 +338,7 @@ class MainWidget(QWidget):
         self.main_label.setAlignment(Qt.AlignCenter)
         self.main_label.setStyleSheet('font: 10.5pt \'맑은 고딕\'')
         self.main_label.setWordWrap(True)
+        self.main_label.setOpenExternalLinks(True)
         # self.set_main_label('namuplant: a bot for namu.wiki')
 
         # self.tabs = QTabWidget()
@@ -324,6 +362,10 @@ class MainWidget(QWidget):
         self.tab_macro.iterate_post.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.micro_post.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.edit_editor.ss.sig_check_ddos.connect(self.show_ddos_dialog)
+        # file name edit dialog
+        self.name_edit_dialog = NameEditDialog()
+        self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
+        # self.name_edit_dialog.btn_ok.clicked.connect(self.nam)
 
     @Slot(str)
     def set_main_label(self, t):
@@ -336,12 +378,15 @@ class MainWidget(QWidget):
         if ddd == QDialog.Accepted:
             obj.is_ddos_checked = True
 
-    def configure(self):
-        self.config_dialog.config_show()
+    def show_config_dialog(self):
+        self.config_dialog.config_show_text()
         ddd = self.config_dialog.exec_()
         if ddd == QDialog.Accepted:
             self.tab_macro.iterate_post.load_config(self.config_dialog.config)
             self.tab_macro.micro_post.load_config(self.config_dialog.config)
+
+    def show_name_edit_dialog(self):
+        self.name_edit_dialog.show()
 
 
 class TabMacro(QWidget):
@@ -361,12 +406,12 @@ class TabMacro(QWidget):
         self.btn_get.setMinimumWidth(70)
         self.btn_get.setMaximumWidth(100)
         # last row: main work
-        self.combo_speed = QComboBox(self)
-        self.combo_speed.addItems(['고속', '저속'])
-        self.combo_speed.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_speed.setMinimumWidth(70)
-        self.combo_speed.setMaximumWidth(100)
-        self.combo_speed.currentIndexChanged.connect(self.iterate_speed_change)
+        self.cmb_speed = QComboBox(self)
+        self.cmb_speed.addItems(['고속', '저속'])
+        self.cmb_speed.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_speed.setMinimumWidth(70)
+        self.cmb_speed.setMaximumWidth(100)
+        self.cmb_speed.currentIndexChanged.connect(self.iterate_speed_change)
         self.btn_do = QPushButton('시작', self)
         self.btn_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_do.setMinimumWidth(72)
@@ -401,11 +446,11 @@ class TabMacro(QWidget):
         box_last_row = QHBoxLayout()
         box_last_row.addWidget(self.btn_get)
         box_last_row.addStretch(6)
-        box_last_row.addWidget(self.combo_speed)
+        box_last_row.addWidget(self.cmb_speed)
         box_last_row.addWidget(self.btn_do)
         box_last_row.addWidget(self.btn_pause)
         box_last_row.setStretchFactor(self.btn_get, 1)
-        box_last_row.setStretchFactor(self.combo_speed, 1)
+        box_last_row.setStretchFactor(self.cmb_speed, 1)
         box_last_row.setStretchFactor(self.btn_do, 1)
         box_last_row.setStretchFactor(self.btn_pause, 1)
         box_last_row.setContentsMargins(0, 0, 0, 0)
@@ -418,9 +463,9 @@ class TabMacro(QWidget):
         # widget connect
         self.doc_board.table_doc.sig_main_label.connect(self.str_to_main)
         self.doc_board.table_doc.sig_doc_viewer.connect(self.micro_view)
-        self.doc_board.combo_option.currentIndexChanged.connect(self.btn_get_enable)
+        self.doc_board.cmb_option.currentIndexChanged.connect(self.btn_get_enable)
         self.tabs_viewer.sig_main_label.connect(self.str_to_main)
-        self.edit_editor.table_edit.sig_insert.connect(self.doc_board.table_doc.insert_edit_index)
+        self.edit_editor.table_edit.sig_insert_edit_sign.connect(self.doc_board.table_doc.insert_edit_sign)
         self.btn_do.clicked.connect(self.iterate_start)
         self.btn_pause.clicked.connect(self.thread_quit)
         # thread get_click
@@ -497,7 +542,7 @@ class TabMacro(QWidget):
             self.req_get.mode = 1
             self.btn_do.setEnabled(False)
             self.btn_pause.setEnabled(True)
-            self.req_get.option = self.doc_board.combo_option.currentIndex()
+            self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
 
     @Slot(str)
@@ -509,7 +554,7 @@ class TabMacro(QWidget):
             self.req_get.code = code
             self.btn_do.setEnabled(False)
             self.btn_pause.setEnabled(True)
-            self.req_get.option = self.doc_board.combo_option.currentIndex()
+            self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
 
     @Slot()
@@ -531,7 +576,7 @@ class TabMacro(QWidget):
         self.iterate_post.doc_list = [row for row in self.doc_board.table_doc.rows_text_copy()]
         # self.iterate_post.doc_list = self.doc_board.table_doc.rows_text_copy_list()
         self.iterate_post.edit_dict = self.edit_editor.table_edit.edits_copy(0)
-        self.iterate_post.index_speed = self.combo_speed.currentIndex()
+        self.iterate_post.index_speed = self.cmb_speed.currentIndex()
         self.iterate_post.diff_done = 1
         self.th_iterate.start()
 
@@ -755,11 +800,13 @@ class TableDoc(TableEnhanced):
         super().__init__()
         self.setColumnCount(3)
         self.setGridStyle(Qt.DotLine)
+        self.cellDoubleClicked.connect(self.view_doc)
         self.setHorizontalHeaderLabels(['코드', '표제어', '비고'])
         self.horizontalHeader().setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.horizontalHeader().setMinimumSectionSize(34)
         # self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().sectionClicked.connect(self.sort)
         self.horizontalHeader().sectionDoubleClicked.connect(self.dedupl)
         # self.horizontalHeader().sectionResized.connect(self.resize_section)
         self.verticalHeader().setStyleSheet('font: 7pt \'맑은 고딕\'')
@@ -796,34 +843,27 @@ class TableDoc(TableEnhanced):
         if e.key() == Qt.Key_Insert:
             insert = self.rows_text_insert(where_to=self.currentRow())
             insert.send(None)
-            insert.send(['^', '⌛ 정지 ⌛', ''])
-            # self.rows_insert([['^', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
+            insert.send(['!', '⌛ 정지 ⌛', ''])
+            # self.rows_insert([['!', '⌛ 정지 ⌛', '']], where_to=self.currentRow())
             self.setCurrentCell(self.currentRow() - 1, 1)
 
-    def mouseDoubleClickEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            self.sig_doc_viewer.emit(self.item(self.currentRow(), 0).text())
-        elif e.button() == Qt.RightButton:
-            pass
+    @Slot(int, int)
+    def view_doc(self, row, _):
+        self.sig_doc_viewer.emit(self.item(row, 0).text())
 
     @Slot(int, str)
     def set_error(self, row, text):
-        item = QTableWidgetItem(text)
-        item.setFlags(item.flags() ^ Qt.ItemIsEditable)
-        self.setItem(row, 2, item)
-        self.resizeColumnToContents(2)
+        self.edit_item_text(row, 2, self.item(row, 2).flags(), text)
 
     @Slot(int)
     def set_current(self, row):
         self.setCurrentCell(row, 1)
 
-    # @Slot(list)
-    # def receive_codes_get(self, code_list):  # code list 1d -> code list 2d
-    #     if code_list:
-    #         self.rows_insert([[code, parse.unquote(code), ''] for code in code_list])
-    #         self.after_insert()
-    #         self.setCurrentCell(self.rowCount() - 1, 1)
-    #         self.setFocus()
+    def edit_item_text(self, row, col, flag, new_text):
+        new_item = QTableWidgetItem(new_text)
+        new_item.setFlags(flag)
+        self.setItem(row, col, new_item)
+        self.resizeColumnToContents(col)
 
     def after_insert(self):
         self.resizeColumnsToContents()
@@ -831,7 +871,7 @@ class TableDoc(TableEnhanced):
             self.setColumnWidth(1, 450)
 
     @Slot(int)
-    def dedupl(self, col=0):
+    def dedupl(self, _):
         temp = set()
         rows_list = []
         ii = 0
@@ -841,16 +881,34 @@ class TableDoc(TableEnhanced):
                 rows_list.append(ii)
             else:
                 temp.add(code)
-                ii += 1
+            ii += 1
+        print(rows_list)
         self.rows_delete(rows_list)
         if len(rows_list) == 0:
             self.sig_main_label.emit('중복되는 표제어가 존재하지 않습니다.')
         else:
             self.sig_main_label.emit(f'중복되는 표제어를 {len(rows_list)}개 제거했습니다.')
-        self.set_current(0)
+        self.selectionModel().clearSelection()
+        self.scrollToTop()
+
+    @Slot(int)
+    def sort(self, _):
+        self.sortItems(0, Qt.AscendingOrder)
+
+    @Slot(str, int)
+    def edit_file_name(self, t, opt):
+        if self._rows_selected():
+            for row in self._rows_selected():
+                old = self.item(row, 1).text()
+                if old[0:3] == '파일:':
+                    if opt == 0:  # 접두 0
+                        new = f'파일:{t}{old[3:]}'
+                    else:  # 접미 1
+                        new = f'{old[:-4]}{t}{old[old.rfind("."):]}'
+                    self.edit_item_text(row, 1, self.item(row, 1).flags(), new)
 
     @Slot(str)
-    def insert_edit_index(self, edit_index):
+    def insert_edit_sign(self, edit_index):
         where_to = self.currentRow()
         if where_to == -1:
             where_to = 0
@@ -866,39 +924,39 @@ class TableDoc(TableEnhanced):
 
     @Slot()
     def insert_edit_1(self):
-        self.insert_edit_index('1')
+        self.insert_edit_sign('1')
 
     @Slot()
     def insert_edit_2(self):
-        self.insert_edit_index('2')
+        self.insert_edit_sign('2')
 
     @Slot()
     def insert_edit_3(self):
-        self.insert_edit_index('3')
+        self.insert_edit_sign('3')
 
     @Slot()
     def insert_edit_4(self):
-        self.insert_edit_index('4')
+        self.insert_edit_sign('4')
 
     @Slot()
     def insert_edit_5(self):
-        self.insert_edit_index('5')
+        self.insert_edit_sign('5')
 
     @Slot()
     def insert_edit_6(self):
-        self.insert_edit_index('6')
+        self.insert_edit_sign('6')
 
     @Slot()
     def insert_edit_7(self):
-        self.insert_edit_index('7')
+        self.insert_edit_sign('7')
 
     @Slot()
     def insert_edit_8(self):
-        self.insert_edit_index('8')
+        self.insert_edit_sign('8')
 
     @Slot()
     def insert_edit_9(self):
-        self.insert_edit_index('9')
+        self.insert_edit_sign('9')
 
     @Slot(int, int)
     def resize_to_splitter(self, w, _):
@@ -930,17 +988,18 @@ class TableDoc(TableEnhanced):
 
 
 class TableEdit(TableEnhanced):
-    sig_insert = Signal(str)
+    sig_insert_edit_sign = Signal(str)
 
     def __init__(self):
         super().__init__()
         self.setColumnCount(6)
+        self.setGridStyle(Qt.DashLine)
+        self.cellDoubleClicked.connect(self.emit_edit_sign)
         self.setHorizontalHeaderLabels(['순', '1', '2', '3', '4', '내용'])
         self.horizontalHeader().setVisible(False)
         self.horizontalHeader().setStretchLastSection(True)
         self.verticalHeader().setVisible(False)
         self.resizeColumnsToContents()
-        self.setGridStyle(Qt.DashLine)
         # self.resizeRowsToContents()
         # self.sizePolicy().setVerticalStretch(7)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -952,11 +1011,11 @@ class TableEdit(TableEnhanced):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
 
         if e.key() == Qt.Key_Insert:
-            self.sig_insert.emit(self.item(self.currentRow(), 0).text())
+            self.sig_insert_edit_sign.emit(self.item(self.currentRow(), 0).text())
 
-    def mouseDoubleClickEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            self.sig_insert.emit(self.item(self.currentRow(), 0).text())
+    @Slot(int, int)
+    def emit_edit_sign(self, row, _):
+        self.sig_insert_edit_sign.emit(self.item(row, 0).text())
 
     def edits_copy(self, pick=0):
         temp = {}
@@ -1007,13 +1066,13 @@ class DocBoard(QWidget):
         self.table_doc = TableDoc()
         self.table_doc.setStyleSheet("""
             QTableWidget::item:selected{
-                background-color: #0078d7;
+                background-color: darkcyan;
                 color: white;}
             """)
-        self.combo_option = QComboBox(self)
-        self.combo_option.addItems(['1개', '역링크', '분류', '이미지'])
-        self.combo_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_option.currentIndexChanged.connect(self.combo_option_change)
+        self.cmb_option = QComboBox(self)
+        self.cmb_option.addItems(['1개', '역링크', '분류', '이미지'])
+        self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_option.currentIndexChanged.connect(self.cmb_option_change)
         # self.name_input = QLineEdit()
         self.name_input = LineEnhanced()
         self.name_input.setMinimumWidth(100)
@@ -1023,7 +1082,7 @@ class DocBoard(QWidget):
         self.name_input.focused.connect(self.invoke_insert_file)
         # self.name_input.textChanged.connect(self.invoke_insert_file)
         box_h = QHBoxLayout()
-        box_h.addWidget(self.combo_option)
+        box_h.addWidget(self.cmb_option)
         box_h.addWidget(self.name_input)
         box_v = QVBoxLayout()
         box_v.addLayout(box_h)
@@ -1038,11 +1097,11 @@ class DocBoard(QWidget):
 
     @Slot()
     def invoke_insert_file(self):
-        if self.combo_option.currentIndex() == 3:
+        if self.cmb_option.currentIndex() == 3:
             self.insert_file()
 
     @Slot(int)
-    def combo_option_change(self, i):
+    def cmb_option_change(self, i):
         if i == 3:
             self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
         else:
@@ -1061,7 +1120,7 @@ class DocBoard(QWidget):
         name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './',
                                                  '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
         for n in name_list:
-            insert.send([f'@{n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}', ''])
+            insert.send([f'${n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}', ''])
         self.table_doc.resizeColumnsToContents()
         self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
         self.table_doc.setFocus()
@@ -1091,11 +1150,11 @@ class DocViewer(QWidget):
         super().__init__()
         # tab view
         self.tab_view = QWidget()
-        self.combo_info = QComboBox()
-        self.combo_info.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_info.setEditable(True)
-        self.combo_info.setEnabled(False)
-        self.combo_info.setInsertPolicy(QComboBox.NoInsert)
+        self.cmb_info = QComboBox()
+        self.cmb_info.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_info.setEditable(True)
+        self.cmb_info.setEnabled(False)
+        self.cmb_info.setInsertPolicy(QComboBox.NoInsert)
         self.btn_edit = QPushButton('편집', self)
         self.btn_edit.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn_edit.setMaximumWidth(100)
@@ -1105,10 +1164,10 @@ class DocViewer(QWidget):
         self.btn_close.setMaximumWidth(100)
         self.btn_close.setEnabled(False)
         box_tab_view = QHBoxLayout()
-        box_tab_view.addWidget(self.combo_info)
+        box_tab_view.addWidget(self.cmb_info)
         box_tab_view.addWidget(self.btn_close)
         box_tab_view.addWidget(self.btn_edit)
-        box_tab_view.setStretchFactor(self.combo_info, 5)
+        box_tab_view.setStretchFactor(self.cmb_info, 5)
         box_tab_view.setStretchFactor(self.btn_close, 1)
         box_tab_view.setStretchFactor(self.btn_edit, 1)
         box_tab_view.setContentsMargins(0, 0, 0, 0)
@@ -1151,7 +1210,7 @@ class DocViewer(QWidget):
         self.viewer.setPlaceholderText('미리보기 화면')
         self.viewer.setStyleSheet("""
             QTextEdit{
-                selection-background-color: #0078d7; 
+                selection-background-color: darkcyan; 
                 selection-color: white;}        
             """)
         # self.viewer.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1174,18 +1233,18 @@ class DocViewer(QWidget):
 
     @Slot(str, str, bool)
     def set_text_view(self, code, text, editable):
-        self.combo_info.clear()
-        self.combo_info.setEnabled(editable)
-        if self.combo_info.isEnabled():
-            self.combo_info.addItem(parse.unquote(code))
-            self.combo_info.addItems(self.get_cat_from(text))
+        self.cmb_info.clear()
+        self.cmb_info.setEnabled(editable)
+        if self.cmb_info.isEnabled():
+            self.cmb_info.addItem(parse.unquote(code))
+            self.cmb_info.addItems(self.get_cat_from(text))
         self.btn_edit.setEnabled(editable)
         self.btn_close.setEnabled(True)
         self.viewer.setPlainText(text)
 
     @Slot(str)
     def set_text_edit(self, text):
-        self.combo_info.clear()
+        self.cmb_info.clear()
         self.viewer.setReadOnly(False)
         self.tabs.setCurrentWidget(self.tab_edit)
         self.viewer.setPlainText(text)
@@ -1193,19 +1252,19 @@ class DocViewer(QWidget):
     @Slot()
     def quit_edit(self, clear):
         self.viewer.setReadOnly(True)
-        self.combo_info.clear()
+        self.cmb_info.clear()
         if clear:
             self.viewer.clear()
             self.find_input.setHidden(True)
             self.find_input.clear()
-            self.combo_info.setEnabled(False)
+            self.cmb_info.setEnabled(False)
             self.btn_edit.setEnabled(False)
             self.btn_close.setEnabled(False)
         self.tabs.setCurrentWidget(self.tab_view)
 
     @staticmethod
     def get_cat_from(text):
-        return re.findall(r'\[\[(분류: ?.*?)\]\]', text)
+        return list(map(lambda x: x[:-5] if x[-5:] == '#blur' else x, re.findall(r'\[\[(분류: ?.*?)\]\]', text)))
 
     @Slot()
     def show_find_input(self):
@@ -1228,7 +1287,10 @@ class DocViewer(QWidget):
                 break
             else:
                 if i == 0:
-                    self.viewer.moveCursor(QTextCursor.Start)
+                    if order == 0:
+                        self.viewer.moveCursor(QTextCursor.Start)
+                    else:
+                        self.viewer.moveCursor(QTextCursor.End)
                 elif i == 1:
                     winsound.Beep(500, 50)
 
@@ -1441,54 +1503,53 @@ class EditEditor(QWidget):
         # table edit
         self.table_edit = TableEdit()
         self.table_edit.setStyleSheet("""
-            QTableWidget{
-                font: 10pt \'Segoe UI\'}
+            * {font: 10pt \'Segoe UI\'}
             QTableWidget::item:selected{
-                background-color: #0078d7;
+                background-color: darkcyan;
                 color: white;}
             """)
         # edit options
         self.spin_1 = QSpinBox()
         self.spin_1.setMinimum(1)
         self.spin_1.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt1 = QComboBox()
-        self.combo_opt1.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt1_text = ['일반', '파일', '요약', '복구']
-        self.combo_opt1.addItems(self.combo_opt1_text)
-        self.combo_opt2 = QComboBox()
-        self.combo_opt2.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt2_text = ['', 'if', 'then']
-        self.combo_opt2.addItems(self.combo_opt2_text)
-        self.combo_opt2.setEnabled(False)
-        self.combo_opt3 = QComboBox()
-        self.combo_opt3.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt3_1_text = ['찾기', '바꾸기', '넣기']
-        self.combo_opt3_2_text = ['본문', '라이선스', '분류']
-        self.combo_opt3.addItems(self.combo_opt3_1_text)
-        self.combo_opt4 = QComboBox()
-        self.combo_opt4.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.combo_opt4_1_1_text = ['텍스트', '정규식']
-        self.combo_opt4_1_3_text = ['맨 앞', '맨 뒤', '분류']
-        self.combo_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
-        self.combo_opt4_2_2_text = []
-        self.combo_opt4_2_3_text = []
-        self.combo_opt4_4_text = ['로그', '지정']
-        self.combo_opt4.addItems(self.combo_opt4_1_1_text)
-        self.combo_opt1.currentTextChanged.connect(self.combo_opt1_change)
-        self.combo_opt2.currentTextChanged.connect(self.combo_opt2_change)
-        self.combo_opt3.currentTextChanged.connect(self.combo_opt3_change)
-        self.combo_opt4.currentTextChanged.connect(self.combo_opt4_change)
+        self.cmb_opt1 = QComboBox()
+        self.cmb_opt1.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_opt1_text = ['일반', '파일', '요약', '복구']
+        self.cmb_opt1.addItems(self.cmb_opt1_text)
+        self.cmb_opt2 = QComboBox()
+        self.cmb_opt2.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_opt2_text = ['', 'if', 'then']
+        self.cmb_opt2.addItems(self.cmb_opt2_text)
+        self.cmb_opt2.setEnabled(False)
+        self.cmb_opt3 = QComboBox()
+        self.cmb_opt3.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_opt3_1_text = ['찾기', '바꾸기', '넣기']
+        self.cmb_opt3_2_text = ['본문', '라이선스', '분류']
+        self.cmb_opt3.addItems(self.cmb_opt3_1_text)
+        self.cmb_opt4 = QComboBox()
+        self.cmb_opt4.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_opt4_1_1_text = ['텍스트', '정규식', '분류:', '역링크']
+        self.cmb_opt4_1_3_text = ['맨 앞', '맨 뒤', '분류 뒤']
+        self.cmb_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
+        self.cmb_opt4_2_2_text = []
+        self.cmb_opt4_2_3_text = []
+        self.cmb_opt4_4_text = ['로그', '지정']
+        self.cmb_opt4.addItems(self.cmb_opt4_1_1_text)
+        self.cmb_opt1.currentTextChanged.connect(self.cmb_opt1_change)
+        self.cmb_opt2.currentTextChanged.connect(self.cmb_opt2_change)
+        self.cmb_opt3.currentTextChanged.connect(self.cmb_opt3_change)
+        self.cmb_opt4.currentTextChanged.connect(self.cmb_opt4_change)
         #
         box_edit_combos.addWidget(self.spin_1)
-        box_edit_combos.addWidget(self.combo_opt1)
-        box_edit_combos.addWidget(self.combo_opt2)
-        box_edit_combos.addWidget(self.combo_opt3)
-        box_edit_combos.addWidget(self.combo_opt4)
+        box_edit_combos.addWidget(self.cmb_opt1)
+        box_edit_combos.addWidget(self.cmb_opt2)
+        box_edit_combos.addWidget(self.cmb_opt3)
+        box_edit_combos.addWidget(self.cmb_opt4)
         box_edit_combos.setStretchFactor(self.spin_1, 1)
-        box_edit_combos.setStretchFactor(self.combo_opt1, 1)
-        box_edit_combos.setStretchFactor(self.combo_opt2, 1)
-        box_edit_combos.setStretchFactor(self.combo_opt3, 1)
-        box_edit_combos.setStretchFactor(self.combo_opt4, 1)
+        box_edit_combos.setStretchFactor(self.cmb_opt1, 1)
+        box_edit_combos.setStretchFactor(self.cmb_opt2, 1)
+        box_edit_combos.setStretchFactor(self.cmb_opt3, 1)
+        box_edit_combos.setStretchFactor(self.cmb_opt4, 1)
         #
         self.edit_input = LineEnhanced()
         self.edit_input.setStyleSheet('font: 10.5pt \'Segoe UI\'')
@@ -1502,69 +1563,69 @@ class EditEditor(QWidget):
         self.setLayout(box_edit)
 
     @Slot(str)
-    def combo_opt1_change(self, t):
+    def cmb_opt1_change(self, t):
         if t == '일반':  # 일반
-            self.combo_opt3.setEnabled(True)
-            self.combo_opt4.setEnabled(True)
-            self.combo_opt3.clear()
-            self.combo_opt3.addItems(self.combo_opt3_1_text)
+            self.cmb_opt3.setEnabled(True)
+            self.cmb_opt4.setEnabled(True)
+            self.cmb_opt3.clear()
+            self.cmb_opt3.addItems(self.cmb_opt3_1_text)
         elif t == '파일':  # 파일
-            lic, cat = self.combo_image()
-            self.combo_opt4_2_2_text = lic  # 라이선스
-            self.combo_opt4_2_3_text = cat  # 파일 분류
-            self.combo_opt3.setEnabled(True)
-            self.combo_opt4.setEnabled(True)
-            self.combo_opt3.clear()
-            self.combo_opt3.addItems(self.combo_opt3_2_text)
+            lic, cat = self.cmb_image()
+            self.cmb_opt4_2_2_text = lic  # 라이선스
+            self.cmb_opt4_2_3_text = cat  # 파일 분류
+            self.cmb_opt3.setEnabled(True)
+            self.cmb_opt4.setEnabled(True)
+            self.cmb_opt3.clear()
+            self.cmb_opt3.addItems(self.cmb_opt3_2_text)
         elif t == '복구':
-            self.combo_opt3.setEnabled(False)
-            self.combo_opt3.clear()
-            self.combo_opt4.setEnabled(True)
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_4_text)
+            self.cmb_opt3.setEnabled(False)
+            self.cmb_opt3.clear()
+            self.cmb_opt4.setEnabled(True)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_4_text)
         elif t == '기타' or t == '요약':
-            self.combo_opt3.setEnabled(False)
-            self.combo_opt4.setEnabled(False)
-            self.combo_opt3.clear()
-            self.combo_opt4.clear()
+            self.cmb_opt3.setEnabled(False)
+            self.cmb_opt4.setEnabled(False)
+            self.cmb_opt3.clear()
+            self.cmb_opt4.clear()
 
     @Slot(str)
-    def combo_opt2_change(self, t):
+    def cmb_opt2_change(self, t):
         pass
 
     @Slot(str)
-    def combo_opt3_change(self, t):
+    def cmb_opt3_change(self, t):
         # 일반
         if t == '찾기' or t == '바꾸기':
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_1_1_text)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_1_1_text)
             if t == '찾기':
-                self.combo_opt4.setEnabled(True)
+                self.cmb_opt4.setEnabled(True)
             elif t == '바꾸기':
-                self.combo_opt4.setEnabled(False)
+                self.cmb_opt4.setEnabled(False)
         elif t == '넣기':
-            self.combo_opt4.setEnabled(True)
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_1_3_text)
+            self.cmb_opt4.setEnabled(True)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_1_3_text)
         # 파일
         elif t == '본문':
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_2_1_text)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_2_1_text)
             self.edit_input.clear()
         elif t == '라이선스':
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_2_2_text)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_2_2_text)
         elif t == '분류':
-            self.combo_opt4.clear()
-            self.combo_opt4.addItems(self.combo_opt4_2_3_text)
+            self.cmb_opt4.clear()
+            self.cmb_opt4.addItems(self.cmb_opt4_2_3_text)
 
     @Slot(str)
-    def combo_opt4_change(self, t):
-        opt3 = self.combo_opt3.currentText()
+    def cmb_opt4_change(self, t):
+        opt3 = self.cmb_opt3.currentText()
         if opt3 == '라이선스' or opt3 == '분류':
             self.edit_input.setText(t)
 
-    def combo_image(self):
+    def cmb_image(self):
         soup = self.ss.request_soup('get', f'{core.SITE_URL}/Upload')
         lic = [t.text for t in soup.select('#licenseSelect > option')]
         lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
@@ -1575,17 +1636,17 @@ class EditEditor(QWidget):
     def add_to_edit(self):
         # 값 추출
         string = self.edit_input.text()
-        opt1 = self.combo_opt1.currentText()
-        opt2 = self.combo_opt2.currentText()
-        if self.combo_opt3.isEnabled():
-            opt3 = self.combo_opt3.currentText()
+        opt1 = self.cmb_opt1.currentText()
+        opt2 = self.cmb_opt2.currentText()
+        if self.cmb_opt3.isEnabled():
+            opt3 = self.cmb_opt3.currentText()
         else:
             opt3 = ''
-        if self.combo_opt4.isEnabled():
+        if self.cmb_opt4.isEnabled():
             if opt3 == '라이선스' or opt3 == '분류':
                 opt4 = ''
             else:
-                opt4 = self.combo_opt4.currentText()
+                opt4 = self.cmb_opt4.currentText()
                 if opt4 == '로그':
                     string = ''
         else:
@@ -1602,6 +1663,6 @@ class EditEditor(QWidget):
         self.edit_input.clear()
         if opt1 == '일반':
             if opt3 == '바꾸기':
-                self.combo_opt3.setCurrentText('찾기')
+                self.cmb_opt3.setCurrentText('찾기')
             elif opt3 == '찾기':
-                self.combo_opt3.setCurrentText('바꾸기')
+                self.cmb_opt3.setCurrentText('바꾸기')
