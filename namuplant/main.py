@@ -1137,10 +1137,10 @@ class LineFind(LineEnhanced):
     def keyPressEvent(self, e):
         super().keyPressEvent(e)
         if e.key() == Qt.Key_Return:
-            self.sig_find.emit(self.text(), 0)
+            self.sig_find.emit(self.text(), 0)  # 전방 탐색
 
     def find_backward(self):
-        self.sig_find.emit(self.text(), 1)
+        self.sig_find.emit(self.text(), 1)  # 후방 탐색
 
 
 class DocViewer(QWidget):
@@ -1518,17 +1518,17 @@ class EditEditor(QWidget):
         self.cmb_opt1.addItems(self.cmb_opt1_text)
         self.cmb_opt2 = QComboBox()
         self.cmb_opt2.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.cmb_opt2_text = ['', 'if', 'then']
+        self.cmb_opt2_text = ['', '경우', '시행', '그리고', '또는']
         self.cmb_opt2.addItems(self.cmb_opt2_text)
         self.cmb_opt2.setEnabled(False)
         self.cmb_opt3 = QComboBox()
         self.cmb_opt3.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.cmb_opt3_1_text = ['찾기', '바꾸기', '넣기']
+        self.cmb_opt3_1_text = ['찾기', '바꾸기', '지우기', '넣기']
         self.cmb_opt3_2_text = ['본문', '라이선스', '분류']
         self.cmb_opt3.addItems(self.cmb_opt3_1_text)
         self.cmb_opt4 = QComboBox()
         self.cmb_opt4.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.cmb_opt4_1_1_text = ['텍스트', '정규식', '분류:', '역링크']
+        self.cmb_opt4_1_1_text = ['텍스트', '정규식', '분류:', '역링크', '포함']
         self.cmb_opt4_1_3_text = ['맨 앞', '맨 뒤', '분류 뒤']
         self.cmb_opt4_2_1_text = ['설명', '출처', '날짜', '저작자', '기타']
         self.cmb_opt4_2_2_text = []
@@ -1596,10 +1596,10 @@ class EditEditor(QWidget):
     @Slot(str)
     def cmb_opt3_change(self, t):
         # 일반
-        if t == '찾기' or t == '바꾸기':
+        if t == '찾기' or t == '바꾸기' or t == '지우기':
             self.cmb_opt4.clear()
             self.cmb_opt4.addItems(self.cmb_opt4_1_1_text)
-            if t == '찾기':
+            if t == '찾기' or t == '지우기':
                 self.cmb_opt4.setEnabled(True)
             elif t == '바꾸기':
                 self.cmb_opt4.setEnabled(False)

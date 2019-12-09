@@ -193,6 +193,7 @@ class ReqPost(SeedSession):
         find_temp = ''
         summary = ''
         option_temp = ''
+
         for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
             if edit[1] == '일반':  # 문서 내 모든 텍스트
                 if edit[3] == '찾기':
@@ -207,16 +208,33 @@ class ReqPost(SeedSession):
                         except re.error:
                             # print('regex error!')
                             continue
-                    elif option_temp == '역링크':
-                        text = re.sub(rf'\[(?i:include)\({re.escape(find_temp)}(?P<after>.*?\)\])',
-                                      rf'[include({edit[5]}\g<after>', text)  # 인클루드 처리
-                        text = re.sub(rf'\[\[{re.escape(find_temp)}(?P<after>\||\]|#| +)',
-                                      rf'[[{edit[5]}\g<after>', text)  # 기본
-                        text = re.sub(rf'\[\[(?P<same>{edit[5]})\|(?P=same)\]\]', rf'[[{edit[5]}]]', text)  # 중복
-
                     elif option_temp == '분류:':
                         text = re.sub(rf'\[\[분류: ?{re.escape(find_temp)}(?P<blur>#blur)?\]\]',
                                       rf'[[분류:{edit[5]}\g<blur>]]', text)
+                    elif option_temp == '역링크':
+                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(find_temp)}'
+                                      rf'(?P<c>(\||\]|#).*?)(?P<d>(?(a)|(?(b)\]\]|))\]{1,4})',
+                                      rf'\g<a>[[{edit[5]}\g<c>\g<d>', text)
+                        text = re.sub(rf'\[\[{edit[5]}(?P<a>|#.*?)\|{edit[5]}\]\]', rf'[[{edit[5]}\g<a>]]', text)  # 중복
+                    elif option_temp == '포함':  # 인클루드
+                        text = re.sub(rf'\[(?i:include)\({re.escape(find_temp)}(?P<after>.*?\)\])',
+                                      rf'[include({edit[5]}\g<after>', text)
+                elif edit[3] == '지우기':
+                    if edit[4] == '텍스트':
+                        text = text.replace(edit[5], '')
+                    elif edit[4] == '정규식':
+                        try:
+                            text = re.sub(edit[5], '', text)
+                        except re.error:
+                            # print('regex error!')
+                            continue
+                    elif edit[4] == '분류:':
+                        text = re.sub(rf'\[\[분류: ?{re.escape(find_temp)}.*?\]\]', '', text)
+                    elif edit[4] == '역링크':  # 링크이미지의 ]]]] 문제.
+                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(find_temp)}'
+                                      rf'(\||\]|#).*?(?P<c>(?(a)|(?(b)\]\]|)))\]{1,4}', r'\g<a>\g<c>', text)
+                    elif edit[4] == '포함':
+                        text = re.sub(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\](\n|$)', '', text)
                 elif edit[3] == '넣기':
                     if edit[4] == '맨 앞':
                         text = f'{edit[5]}\n{text}'
@@ -229,8 +247,6 @@ class ReqPost(SeedSession):
                 pass
             elif edit[1] == '요약':  # 편집요약
                 summary = edit[5]
-            elif edit[1] == '복구':  # 복구 옵션
-                pass
         return text, summary
 
     def get_acl(self):
@@ -339,7 +355,7 @@ class Iterate(ReqPost):
                         label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
                         self.sig_label_text.emit(label)
 
-                        if self.doc_list[i][0][0] == '$':  # 파일. 0번열의 0번째 문자가 @
+                        if self.doc_list[i][0][0] == '$':  # 파일. 0번열의 0번째 문자가 $
                             post_error = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], upload_t, upload_s)
                             doc_logger.send({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                              'rev': f'r0', 'time': self.time_doc_log(),
