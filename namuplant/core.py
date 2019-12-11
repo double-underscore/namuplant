@@ -213,8 +213,8 @@ class ReqPost(SeedSession):
                                       rf'[[분류:{edit[5]}\g<blur>]]', text)
                     elif option_temp == '역링크':
                         text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(find_temp)}'
-                                      rf'(?P<c>(\||\]|#).*?)(?P<d>(?(a)|(?(b)\]\]|))\]{1,4})',
-                                      rf'\g<a>[[{edit[5]}\g<c>\g<d>', text)
+                                      rf'(?P<c>\||(?P<f>\])|#)(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))',
+                                      rf'\g<a>[[{edit[5]}\g<c>\g<d>\g<e>', text)
                         text = re.sub(rf'\[\[{edit[5]}(?P<a>|#.*?)\|{edit[5]}\]\]', rf'[[{edit[5]}\g<a>]]', text)  # 중복
                     elif option_temp == '포함':  # 인클루드
                         text = re.sub(rf'\[(?i:include)\({re.escape(find_temp)}(?P<after>.*?\)\])',
@@ -229,10 +229,11 @@ class ReqPost(SeedSession):
                             # print('regex error!')
                             continue
                     elif edit[4] == '분류:':
-                        text = re.sub(rf'\[\[분류: ?{re.escape(find_temp)}.*?\]\]', '', text)
+                        text = re.sub(rf'\[\[분류: ?{re.escape(edit[5])}.*?\]\]', '', text)
                     elif edit[4] == '역링크':  # 링크이미지의 ]]]] 문제.
-                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(find_temp)}'
-                                      rf'(\||\]|#).*?(?P<c>(?(a)|(?(b)\]\]|)))\]{1,4}', r'\g<a>\g<c>', text)
+                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
+                                      rf'(\||(?P<f>\])|#)(.|\n)*?(?P<c>(?(a)|(?(b)\]\]|)))(?(f)\]|\]\])',
+                                      r'\g<a>\g<c>', text)
                     elif edit[4] == '포함':
                         text = re.sub(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\](\n|$)', '', text)
                 elif edit[3] == '넣기':
@@ -341,6 +342,7 @@ class Iterate(ReqPost):
                     if self.edit_dict[edit_index][0][1] == '파일':  # 업로드 시에는 반드시 요약보다 파일이 앞에 와야 됨
                         upload_t, upload_s = self.upload_text(self.edit_dict[edit_index])  # 파일 문서 텍스트, 요약
                     else:
+                        # 사전 컴파일이 들어가야하는 부분
                         upload_t, upload_s = '', ''
                     edit_log_index = self.time_edit_log(edit_index)
                     for row in self.edit_dict[edit_index]:
@@ -705,7 +707,7 @@ class ReqGet(SeedSession):
         for i in range(len(spaces)):
             name = (lambda x: x[x.rfind(' ') + 1:])(spaces[i].select('h2')[0].text)
             self.sig_label_text.emit(f'{doc_name}의 하위 {name} 가져오는 중... ( +{total} )\n')
-            for v in spaces[i].select('div.c > div > ul > li > a'):
+            for v in spaces[i].select('ul > li > a'):
                 yield v.get('href')[3:]
                 total += 1
             if spaces[i].select('div > div > a'):  # 다음 버튼
@@ -717,7 +719,7 @@ class ReqGet(SeedSession):
                         return
                     else:
                         new_soup = self.request_soup('get', f'{SITE_URL}/w/{doc_code}{tail}')
-                        for v in new_soup.select('.cl')[i].select('div.c > div > ul > li > a'):
+                        for v in new_soup.select('.cl')[i].select('ul > li > a'):
                             yield v.get('href')[3:]
                             total += 1
                         tail = (lambda x: '' if x is None else x[x.find('?namespace='):])(

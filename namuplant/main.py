@@ -583,6 +583,7 @@ class TabMacro(QWidget):
     @Slot()
     def iterate_finish(self):
         self.th_iterate.quit()
+        self.tabs_viewer.close_diff(9)
         self.iterate_post.is_quit = False
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
@@ -1003,7 +1004,7 @@ class TableEdit(TableEnhanced):
         # self.resizeRowsToContents()
         # self.sizePolicy().setVerticalStretch(7)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.col_editable = (True, False, False, False, False, True)
+        self.col_editable = (True, True, False, True, True, True)
         self.col_clickable = (True, True, True, True, True, True)
         self.col_alignment = (Qt.AlignCenter, False, False, False, False, False, False)
 
@@ -1458,10 +1459,11 @@ class TabViewers(QTabWidget):
 
     @Slot(int)
     def close_diff(self, done):
-        if done == 2 or done == 3 or done == 5:  # 비교 탭 다시 볼 필요 없음
+        if done == 2 or done == 3 or done == 5 or done == 9:  # 비교 탭 다시 볼 필요 없음
             self.setCurrentWidget(self.doc_viewer)
             self.diff_viewer.browser.clear()
-        self.sig_diff_done.emit(done)
+        if done != 9:
+            self.sig_diff_done.emit(done)
         # self.iterate_post.diff_done = done
 
     @Slot(int)
