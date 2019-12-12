@@ -188,67 +188,80 @@ class ReqPost(SeedSession):
             return True
 
     @staticmethod
-    def find_replace(text, edit_list, title=''):
-        # todo if 편집
-        find_temp = ''
-        summary = ''
-        option_temp = ''
-
-        for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
-            if edit[1] == '일반':  # 문서 내 모든 텍스트
-                if edit[3] == '찾기':
-                    option_temp = edit[4]
-                    find_temp = edit[5]
-                elif edit[3] == '바꾸기':
-                    if option_temp == '텍스트':
-                        text = text.replace(find_temp, edit[5])
-                    elif option_temp == '정규식':
-                        try:
-                            text = re.sub(find_temp, edit[5], text)
-                        except re.error:
-                            # print('regex error!')
-                            continue
-                    elif option_temp == '분류:':
-                        text = re.sub(rf'\[\[분류: ?{re.escape(find_temp)}(?P<blur>#blur)?\]\]',
-                                      rf'[[분류:{edit[5]}\g<blur>]]', text)
-                    elif option_temp == '역링크':
-                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(find_temp)}'
-                                      rf'(?P<c>\||(?P<f>\])|#)(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))',
-                                      rf'\g<a>[[{edit[5]}\g<c>\g<d>\g<e>', text)
-                        text = re.sub(rf'\[\[{edit[5]}(?P<a>|#.*?)\|{edit[5]}\]\]', rf'[[{edit[5]}\g<a>]]', text)  # 중복
-                    elif option_temp == '포함':  # 인클루드
-                        text = re.sub(rf'\[(?i:include)\({re.escape(find_temp)}(?P<after>.*?\)\])',
-                                      rf'[include({edit[5]}\g<after>', text)
-                elif edit[3] == '지우기':
-                    if edit[4] == '텍스트':
-                        text = text.replace(edit[5], '')
-                    elif edit[4] == '정규식':
-                        try:
-                            text = re.sub(edit[5], '', text)
-                        except re.error:
-                            # print('regex error!')
-                            continue
-                    elif edit[4] == '분류:':
-                        text = re.sub(rf'\[\[분류: ?{re.escape(edit[5])}.*?\]\]', '', text)
-                    elif edit[4] == '역링크':  # 링크이미지의 ]]]] 문제.
-                        text = re.sub(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
-                                      rf'(\||(?P<f>\])|#)(.|\n)*?(?P<c>(?(a)|(?(b)\]\]|)))(?(f)\]|\]\])',
-                                      r'\g<a>\g<c>', text)
-                    elif edit[4] == '포함':
-                        text = re.sub(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\](\n|$)', '', text)
-                elif edit[3] == '넣기':
+    def find_replace(edit_list):
+        text, summary = '', ''
+        comp, subs = [], []
+        for edit in edit_list:  # 사전 컴파일 & 분석
+            if edit[1] == '문서':
+                if edit[2] == '수정':
+                    if edit[3] == '텍스트':
+                        if edit[4] == '찾기':
+                            comp.append(edit[5])
+                        elif edit[4] == '바꾸기':
+                            subs.append(edit[5])
+                        elif edit[4] == '지우기':
+                            comp.append(edit[5])
+                            subs.append('')
+                    elif edit[3] == '정규식':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(edit[5]))
+                        elif edit[4] == '바꾸기':
+                            subs.append(edit[5])
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(edit[5]))
+                            subs.append('')
+                    elif edit[3] == '분류:':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(rf'\[\[분류: ?{re.escape(edit[5])}(?P<blur>#blur)?\]\]'))
+                        elif edit[4] == '바꾸기':
+                            subs.append(rf'[[분류:{edit[5]}\g<blur>]]')
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(rf'\[\[분류: ?{re.escape(edit[5])}.*?\]\]'))
+                            subs.append('')
+                    elif edit[3] == '역링크':
+                        if edit[4] == '찾기':
+                            comp.append(
+                                re.compile(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
+                                           rf'(?P<c>\||(?P<f>\])|#)(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
+                        elif edit[4] == '바꾸기':
+                            subs.append(rf'\g<a>[[{edit[5]}\g<c>\g<d>\g<e>')
+                            comp.append(re.compile(rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
+                            subs.append(rf'[[{edit[5]}\g<a>]]')
+                        elif edit[4] == '지우기':
+                            comp.append(
+                                re.compile(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
+                                           rf'(\||(?P<f>\])|#)(.|\n)*?(?P<c>(?(a)|(?(b)\]\]|)))(?(f)\]|\]\])'))
+                            subs.append(r'\g<a>\g<c>')
+                    elif edit[3] == '포함':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}(?P<after>.*?\)\])'))
+                        elif edit[4] == '바꾸기':
+                            subs.append(rf'[include({edit[5]}\g<after>')
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\]( +)?(\n|$)'))
+                            subs.append('')
+                elif edit[2] == '삽입':
                     if edit[4] == '맨 앞':
-                        text = f'{edit[5]}\n{text}'
+                        comp.append(re.compile(r'^'))
+                        subs.append(f'{edit[5]}\n')
                     elif edit[4] == '맨 뒤':
-                        text = f'{text}\n{edit[5]}'
+                        comp.append(re.compile(r'$'))
+                        subs.append(f'\n{edit[5]}')
                     elif edit[4] == '분류 뒤':
-                        text = re.sub(r'(?P<base>\[\[분류:.*?\]\].*?)(?P<after>\n|$)',
-                                      rf'\g<base>{edit[5]}\g<after>', text)
-            elif edit[1] == '기타':
-                pass
-            elif edit[1] == '요약':  # 편집요약
+                        comp.append(re.compile(r'(?P<base>\[\[분류:.*?\]\].*?)(?P<after>\n|$)'))
+                        subs.append(rf'\g<base>{edit[5]}\g<after>')
+            elif edit[1] == '요약':
                 summary = edit[5]
-        return text, summary
+        while True:
+            text = (yield text, summary)
+            for i in range(len(comp)):
+                if type(comp[i]) is re.Pattern:  # 정규식
+                    try:
+                        text = comp[i].sub(subs[i], text)
+                    except re.error:
+                        continue
+                else:
+                    text = text.replace(comp[i], subs[i])
 
     def get_acl(self):
         pass
@@ -339,11 +352,12 @@ class Iterate(ReqPost):
                     edit_row = i
                     edit_index = self.doc_list[i][0][1:]  # 편집사항 순번
                     self.sig_label_text.emit(f'편집사항 {edit_index}번 진행 중입니다.')
+                    upload_t, upload_s = '', ''
                     if self.edit_dict[edit_index][0][1] == '파일':  # 업로드 시에는 반드시 요약보다 파일이 앞에 와야 됨
                         upload_t, upload_s = self.upload_text(self.edit_dict[edit_index])  # 파일 문서 텍스트, 요약
                     else:
-                        # 사전 컴파일이 들어가야하는 부분
-                        upload_t, upload_s = '', ''
+                        replacer = self.find_replace(self.edit_dict[edit_index])
+                        replacer.send(None)
                     edit_log_index = self.time_edit_log(edit_index)
                     for row in self.edit_dict[edit_index]:
                         edit_logger.send({'index': edit_log_index,
@@ -368,8 +382,8 @@ class Iterate(ReqPost):
                                                          self.doc_list[i][2])
                                 post_rev = 'evert'
                             else:  # 편집
-                                post_rev, post_error = self.edit(self.doc_list[i][0], self.doc_list[i][1],
-                                                                 self.edit_dict[edit_index])  # 포스트
+                                post_rev, post_error = self.edit(self.doc_list[i][0], self.doc_list[i][1], replacer)
+
                             doc_logger.send({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                              'rev': f'r{post_rev}', 'time': self.time_doc_log(),
                                              'index': edit_log_index, 'error': post_error})
@@ -400,13 +414,14 @@ class Iterate(ReqPost):
             edit_logger.close()
         self.finished.emit()
 
-    def edit(self, doc_code, doc_name, edit_list):
+    def edit(self, doc_code, doc_name, replacer):
         # 획득
         text_before, baserev, identifier, error = self.get_text(doc_code)
         # data = self.get_text(doc_code)  # identifier, baserev, text, error
         if not error:  # 권한 X, 문서 X
             # 변경
-            text_after, summary = self.find_replace(text_before, edit_list, doc_name)
+            # text_after, summary = self.find_replace(text_before, edit_list, doc_name)
+            text_after, summary = replacer.send(text_before)
             # 비교
             self.sig_enable_pause.emit(False)
             error = self.diff(text_before, text_after)
@@ -482,7 +497,7 @@ class Iterate(ReqPost):
                         data['etc'] = edit[5]
                     elif edit[4] == '설명':
                         data['explain'] = edit[5]
-                elif edit[3] == '분류':
+                elif edit[3] == '분류:':
                     data['cat'] = edit[5]
                 elif edit[3] == '라이선스':
                     data['lic'] = edit[5]
@@ -580,7 +595,9 @@ class Micro(ReqPost):
         self.finished.emit()
 
     def apply(self, text_before, edit_list):
-        text_after, _ = self.find_replace(text_before, edit_list)
+        replacer = self.find_replace(edit_list)
+        replacer.send(None)
+        text_after, _ = replacer.send(text_before)
         return text_after
         # error = self.diff(text_before, text_after)
         # if error:
