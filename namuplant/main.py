@@ -7,7 +7,7 @@ from urllib import parse
 import pyperclip
 import mouse
 from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel, QLineEdit
-from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit
+from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit
 from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout, QGridLayout, QAbstractScrollArea
 from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
@@ -337,7 +337,9 @@ class MainWidget(QWidget):
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
         self.main_label.setStyleSheet('font: 10.5pt \'맑은 고딕\'')
+        self.main_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.main_label.setWordWrap(True)
+        self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.main_label.setOpenExternalLinks(True)
         # self.set_main_label('namuplant: a bot for namu.wiki')
 
@@ -1004,9 +1006,13 @@ class TableEdit(TableEnhanced):
         # self.resizeRowsToContents()
         # self.sizePolicy().setVerticalStretch(7)
         # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.cellChanged.connect(self.after_item_edit)
         self.col_editable = (True, True, True, True, True, True)
         self.col_clickable = (True, True, True, True, True, True)
         self.col_alignment = (Qt.AlignCenter, False, False, False, False, False, False)
+
+    def after_item_edit(self, _, c):
+        self.resizeColumnToContents(c)
 
     def keyPressEvent(self, e):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
@@ -1207,7 +1213,7 @@ class DocViewer(QWidget):
         self.tabs.tabBar().hide()
         self.tabs.setMaximumHeight(24)
         # viewer
-        self.viewer = QTextEdit()
+        self.viewer = QPlainTextEdit()
         self.viewer.setPlaceholderText('미리보기 화면')
         self.viewer.setStyleSheet("""
             QTextEdit{
@@ -1516,30 +1522,38 @@ class EditEditor(QWidget):
         self.spin_1.setStyleSheet('font: 10.5pt \'맑은 고딕\'')
         self.cmb_main = QComboBox()
         self.cmb_main.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_main.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_main.addItems(['문서', '파일', '요약', '복구'])
         self.cmb_main.currentTextChanged.connect(self.cmb_main_change)
         # cmb_main 문서
         self.cmb_doc = QComboBox()
         self.cmb_doc.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_doc.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_doc.addItems(['수정', '삽입'])
         self.cmb_doc.currentTextChanged.connect(self.cmb_doc_change)
         self.cmb_doc_by = QComboBox()
         self.cmb_doc_by.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_doc_by.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_doc_by.addItems(['텍스트', '정규식', '분류:', '역링크', '포함'])
         self.cmb_doc_do = QComboBox()
         self.cmb_doc_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_doc_do.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_doc_do.addItems(['찾기', '바꾸기', '지우기'])
         self.cmb_doc_insert = QComboBox()
         self.cmb_doc_insert.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_doc_insert.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_doc_insert.addItems(['맨 앞', '맨 뒤', '분류 뒤'])
         # cmb_main 파일
         self.cmb_file = QComboBox()
         self.cmb_file.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_file.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_file.addItems(['본문', '라이선스', '분류:'])
         self.cmb_file.currentTextChanged.connect(self.cmb_file_change)
         self.cmb_file_desc = QComboBox()
         self.cmb_file_desc.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_file_desc.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_file_desc.addItems(['설명', '출처', '날짜', '저작자', '기타'])
+
         lic, cat = self.cmb_image()
         self.cmb_file_lic = QComboBox()
         self.cmb_file_lic.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1558,12 +1572,13 @@ class EditEditor(QWidget):
         # cmb_main 복구
         self.cmb_revert = QComboBox()
         self.cmb_revert.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_revert.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_revert.addItems(['로그', '지정'])
         # space
         self.lbl_2 = QLabel()
         self.lbl_3 = QLabel()
         self.lbl_4 = QLabel()
-        # self.lbl_4.setEnabled(False)
+
         box_edit_combos.addWidget(self.spin_1)  # 0
         box_edit_combos.addWidget(self.cmb_main)  # 1
         box_edit_combos.addWidget(self.lbl_2)  # 2
@@ -1618,8 +1633,10 @@ class EditEditor(QWidget):
     def cmb_main_change(self, t):
         if t == '문서':
             self.show_cmb([True, True, True, False, False, False, False, False, False, False, False, False])
+            self.cmb_doc_change(self.cmb_doc.currentText())
         elif t == '파일':
             self.show_cmb([False, False, False, False, True, True, False, False, False, True, False, False])
+            self.cmb_file_change(self.cmb_file.currentText())
         elif t == '요약':
             self.show_cmb([False, False, False, False, False, False, False, False, False, True, True, True])
         elif t == '복구':
@@ -1640,6 +1657,7 @@ class EditEditor(QWidget):
             self.show_cmb([None, None, None, None, None, False, True, False, None, True, None, None])
         elif t == '분류:':
             self.show_cmb([None, None, None, None, None, False, False, True, None, True, None, None])
+        self.edit_input.clear()
 
     @Slot(int)
     def cmb_file_lic_change(self, i):

@@ -225,6 +225,12 @@ class ReqPost(SeedSession):
                                            rf'(?P<c>\||(?P<f>\])|#)(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
                         elif edit[4] == '바꾸기':
                             subs.append(rf'\g<a>[[{edit[5]}\g<c>\g<d>\g<e>')
+                            if '|' in edit[5]:  # todo #s 처리 오류
+                                tmp_a = edit[5][:edit[5].find('|')]
+                                tmp_b = edit[5][edit[5].find('|') + 1:]
+                                comp.append(
+                                    re.compile(rf'\[\[{re.escape(tmp_a)}\|{re.escape(tmp_b)}(?P<a>|#.*?)(?P<b>\|.*?)\]\]'))
+                                subs.append(rf'[[{tmp_a}\g<a>\g<b>]]')
                             comp.append(re.compile(rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
                             subs.append(rf'[[{edit[5]}\g<a>]]')
                         elif edit[4] == '지우기':
@@ -248,8 +254,7 @@ class ReqPost(SeedSession):
                         comp.append(re.compile(r'$'))
                         subs.append(f'\n{edit[5]}')
                     elif edit[4] == '분류 뒤':
-                        comp.append(re.compile(r'(?P<base>\[\[분류:.*?\]\].*?)(?P<after>\n|$)'))
-                        subs.append(rf'\g<base>{edit[5]}\g<after>')
+                        pass
             elif edit[1] == '요약':
                 summary = edit[5]
         while True:
