@@ -222,17 +222,21 @@ class ReqPost(SeedSession):
                         if edit[4] == '찾기':
                             comp.append(
                                 re.compile(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
-                                           rf'(?P<c>\||(?P<f>\])|#)(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
+                                           rf'((?P<c>\||#)|(?P<f>\]))(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
                         elif edit[4] == '바꾸기':
-                            subs.append(rf'\g<a>[[{edit[5]}\g<c>\g<d>\g<e>')
-                            if '|' in edit[5]:  # todo #s 처리 오류
+                            if '|' in edit[5]:  # a -> a|b
                                 tmp_a = edit[5][:edit[5].find('|')]
                                 tmp_b = edit[5][edit[5].find('|') + 1:]
+                                subs.append(rf'\g<b>[[{tmp_a}\g<c>\g<d>|{tmp_b}\g<f>\g<e>')
+                                # [[a|b|c]]인 경우
                                 comp.append(
-                                    re.compile(rf'\[\[{re.escape(tmp_a)}\|{re.escape(tmp_b)}(?P<a>|#.*?)(?P<b>\|.*?)\]\]'))
+                                    re.compile(rf'\[\[{re.escape(tmp_a)}(?P<a>|#.*?)(?P<b>\|.*?)\|{re.escape(tmp_b)}\]\]'))
                                 subs.append(rf'[[{tmp_a}\g<a>\g<b>]]')
-                            comp.append(re.compile(rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
-                            subs.append(rf'[[{edit[5]}\g<a>]]')
+                            else:  # a -> b
+                                subs.append(rf'\g<b>[[{edit[5]}\g<c>\g<d>\g<f>\g<e>')
+                                # [[a|a]]인 경우
+                                comp.append(re.compile(rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
+                                subs.append(rf'[[{edit[5]}\g<a>]]')
                         elif edit[4] == '지우기':
                             comp.append(
                                 re.compile(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'

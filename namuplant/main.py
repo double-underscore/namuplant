@@ -620,8 +620,12 @@ class TabMacro(QWidget):
     @Slot()
     def micro_apply(self):
         edit_list = self.edit_editor.table_edit.edits_copy(str(self.tabs_viewer.doc_viewer.spin.value()))
-        text = self.tabs_viewer.doc_viewer.viewer.toPlainText()
-        self.tabs_viewer.doc_viewer.viewer.setPlainText(self.micro_post.apply(text, edit_list))
+        v = self.tabs_viewer.doc_viewer.viewer
+        v.selectAll()
+        before = v.textCursor().selection().toPlainText()
+        v.insertPlainText(self.micro_post.apply(before, edit_list))
+        v.moveCursor(QTextCursor.Start)
+        v.setFocus()
 
     @Slot()
     def micro_text_post(self):
@@ -1216,7 +1220,7 @@ class DocViewer(QWidget):
         self.viewer = QPlainTextEdit()
         self.viewer.setPlaceholderText('미리보기 화면')
         self.viewer.setStyleSheet("""
-            QTextEdit{
+            QPlainTextEdit{
                 selection-background-color: darkcyan; 
                 selection-color: white;}        
             """)
