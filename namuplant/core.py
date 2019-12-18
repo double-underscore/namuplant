@@ -218,7 +218,7 @@ class ReqPost(SeedSession):
                         elif edit[4] == '지우기':
                             comp.append(re.compile(rf'\[\[분류: ?{re.escape(edit[5])}.*?\]\]'))
                             subs.append('')
-                    elif edit[3] == '역링크':
+                    elif edit[3] == '링크':
                         if edit[4] == '찾기':
                             comp.append(
                                 re.compile(rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
@@ -459,7 +459,7 @@ class Iterate(ReqPost):
                                          data={'rev': rev, 'identifier': f'm:{self.INFO["ID"]}', 'log': summary})
                 print(soup.text)
                 if soup.h1.text == '오류':
-                    error_temp = soup.h1.next_sibling.next_sibling.text
+                    error_temp = soup.select('article > div')[0].text
                     if error_temp == 'reCAPTCHA 인증이 실패했습니다.':  # 로그인 확인용
                         self.login()
                     else:

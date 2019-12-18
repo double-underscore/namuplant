@@ -4,17 +4,16 @@ import time
 import winsound
 import psutil
 from urllib import parse
-import pyperclip
 import mouse
 from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel, QLineEdit
-from PySide2.QtWidgets import QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit
-from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout, QGridLayout, QAbstractScrollArea
-from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QTableWidgetSelectionRange
+from PySide2.QtWidgets import QComboBox, QSpinBox, QTextEdit, QPlainTextEdit
+from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout
+from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem
 from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
-from PySide2.QtGui import QIcon, QColor, QFont, QKeySequence, QPixmap, QTextCursor, QTextDocument
+from PySide2.QtGui import QIcon, QKeySequence, QPixmap, QTextCursor, QTextDocument
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
-from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
-from . import core, storage
+
+from . import core, sub, storage
 process = psutil.Process(os.getpid())
 
 
@@ -57,12 +56,12 @@ class MainWindow(QMainWindow):
         act_config = QAction('개인 정보', self)
         act_config.triggered.connect(self.action_config)
         # 실험 메뉴
-        act_test = QAction('실험', self)
-        act_test.triggered.connect(self.action_test)
-        act_test2 = QAction('실험2', self)
-        act_test2.triggered.connect(self.action_test2)
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
+        act_test = QAction('test1', self)
+        act_test.triggered.connect(self.action_test)
+        act_test2 = QAction('test2', self)
+        act_test2.triggered.connect(self.action_test2)
         # 메뉴바
         menu_bar = self.menuBar()
         menu_file = menu_bar.addMenu('파일')
@@ -70,12 +69,19 @@ class MainWindow(QMainWindow):
         menu_file.addSeparator()
         menu_file.addActions([act_name_edit])
         menu_option = menu_bar.addMenu('설정')
-        menu_option.addActions([act_on_top, act_config])
+        menu_option.addAction(act_on_top)
+        menu_option.addSeparator()
+        menu_option.addAction(act_config)
         menu_test = menu_bar.addMenu('테스트')
-        menu_test.addActions([act_test, act_test2, act_memory])
+        menu_test.addAction(act_memory)
+        menu_test.addSeparator()
+        menu_test.addActions([act_test, act_test2])
         # 메인 위젯 구동
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
+        icon = QPixmap('icon.png')
+        # icon.scaledToHeight(30)
+        self.main_widget.main_label.setPixmap(icon.scaled(100, 100, Qt.KeepAspectRatio))
         # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')
@@ -196,176 +202,38 @@ class MainWindow(QMainWindow):
             self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 저장했습니다.')
 
 
-class DDOSDialog(QDialog):
-
-    def __init__(self):
-        super().__init__()
-        self.label = QLabel('reCAPTCHA를 해결하고 확인 버튼을 누르세요.\n404 페이지가 로드되면 정상입니다. 완료 버튼을 누르세요.')
-        self.label.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.label.setAlignment(Qt.AlignCenter)
-        self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        QWebEngineProfile.defaultProfile().setHttpAcceptLanguage('ko')
-        self.browser = QWebEngineView()
-        self.browser.setStyleSheet('border: 1px solid gray;')
-        # self.browser.loadStarted.connect(self.test)
-        # self.browser.loadFinished.connect(self.test2)
-        self.btn = QPushButton('완료')
-        self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn.clicked.connect(self.accept)
-        # self.btn.clicked.connect(self.test2)
-        self.abc = False
-        box_v = QVBoxLayout()
-        box_v.addWidget(self.label)
-        box_v.addWidget(self.browser)
-        box_v.addWidget(self.btn)
-        box_v.setContentsMargins(3, 10, 3, 3)
-        self.setLayout(box_v)
-        # self.setWindowModality(Qt.ApplicationModal)
-        self.setWindowTitle('reCAPTCHA')
-        self.setWindowIcon(QIcon('icon.png'))
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
-        self.resize(480, 600)
-
-
-class ConfigDialog(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.lbl_id = QLabel('계정명')
-        self.lbl_id.setAlignment(Qt.AlignCenter)
-        self.lbl_pw = QLabel('비밀번호')
-        self.lbl_pw.setAlignment(Qt.AlignCenter)
-        self.lbl_umi = QLabel('umi 쿠키')
-        self.lbl_umi.setAlignment(Qt.AlignCenter)
-        self.lbl_ua = QLabel('유저 에이전트')
-        self.lbl_ua.setAlignment(Qt.AlignCenter)
-        self.lbl_delay = QLabel('저속 간격')
-        self.lbl_delay.setAlignment(Qt.AlignCenter)
-        self.line_id = QLineEdit()
-        self.line_pw = QLineEdit()
-        self.line_pw.setEchoMode(QLineEdit.PasswordEchoOnEdit)
-        self.line_umi = QLineEdit()
-        self.line_ua = QLineEdit()
-        self.line_delay = QDoubleSpinBox()
-        self.line_delay.setMinimum(3)
-        self.line_delay.setDecimals(1)
-        self.line_delay.setSuffix('초')
-        self.line_delay.setSingleStep(0.1)
-        self.btn_save = QPushButton('저장')
-        self.btn_save.clicked.connect(self.config_save)
-        self.btn_cancel = QPushButton('취소')
-        self.btn_cancel.clicked.connect(self.reject)
-        grid = QGridLayout()
-        grid.addWidget(self.lbl_id, 0, 0, 1, 2)
-        grid.addWidget(self.line_id, 0, 2, 1, 6)
-        grid.addWidget(self.lbl_pw, 1, 0, 1, 2)
-        grid.addWidget(self.line_pw, 1, 2, 1, 6)
-        grid.addWidget(self.lbl_umi, 2, 0, 1, 2)
-        grid.addWidget(self.line_umi, 2, 2, 1, 6)
-        grid.addWidget(self.lbl_ua, 3, 0, 1, 2)
-        grid.addWidget(self.line_ua, 3, 2, 1, 6)
-        grid.addWidget(self.lbl_delay, 4, 0, 1, 2)
-        grid.addWidget(self.line_delay, 4, 2, 1, 6)
-        grid.addWidget(self.btn_save, 5, 4, 1, 2)
-        grid.addWidget(self.btn_cancel, 5, 6, 1, 2)
-        self.setLayout(grid)
-        self.setWindowTitle('개인 정보')
-        self.setWindowIcon(QIcon('icon.png'))
-        self.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        self.resize(400, 160)
-
-        self.config = storage.read_config('config.ini')
-
-    def config_show_text(self):
-        self.line_id.setText(self.config['login']['ID'])
-        self.line_pw.setText(self.config['login']['PW'])
-        self.line_umi.setText(self.config['login']['UMI'])
-        self.line_ua.setText(self.config['login']['UA'])
-        self.line_ua.setCursorPosition(0)
-        self.line_delay.setValue(float(self.config['work']['DELAY']))
-
-    def config_save(self):
-        self.config = {'login': {'ID': self.line_id.text(), 'PW': self.line_pw.text(),
-                                 'UMI': self.line_umi.text(), 'UA': self.line_ua.text()},
-                       'work': {'DELAY': self.line_delay.value()}}
-        storage.write_config('config.ini', self.config)
-        self.accept()
-
-
-class NameEditDialog(QDialog):
-    sig_name_edit = Signal(str, int)
-
-    def __init__(self):
-        super().__init__()
-        self.cmb_option = QComboBox(self)
-        self.cmb_option.addItems(['접두', '접미'])
-        self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.cmb_option.setMinimumWidth(70)
-        self.cmb_option.setMaximumWidth(100)
-        self.line_text = LineEnhanced()
-        self.line_text.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn_ok = QPushButton('실행')
-        self.btn_ok.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn_ok.setMinimumWidth(72)
-        self.btn_ok.setMaximumWidth(100)
-        self.btn_ok.clicked.connect(self.emit_sig_name_edit)
-
-        box_h = QHBoxLayout()
-        box_h.addWidget(self.line_text)
-        box_h.addWidget(self.cmb_option)
-        box_h.addWidget(self.btn_ok)
-        box_h.setStretchFactor(self.cmb_option, 1)
-        box_h.setStretchFactor(self.line_text, 4)
-        box_h.setStretchFactor(self.btn_ok, 1)
-        box_h.setContentsMargins(3, 3, 3, 3)
-        self.setLayout(box_h)
-        self.setWindowTitle('이미지 파일 표제어 일괄 변경')
-        self.setWindowIcon(QIcon('icon.png'))
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
-        # self.resize(300, 40)
-
-    def emit_sig_name_edit(self):
-        self.sig_name_edit.emit(self.line_text.text(), self.cmb_option.currentIndex())
-
-
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
         # config dialog
-        self.config_dialog = ConfigDialog()
+        self.config_dialog = sub.ConfigDialog()
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
-        self.main_label.setStyleSheet('font: 10.5pt \'맑은 고딕\'')
+        self.main_label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.main_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.main_label.setWordWrap(True)
         self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.main_label.setOpenExternalLinks(True)
-        # self.set_main_label('namuplant: a bot for namu.wiki')
-
-        # self.tabs = QTabWidget()
+        #
         self.tab_macro = TabMacro(self.config_dialog.config)
         self.tab_macro.sig_main_label.connect(self.set_main_label)
-        # self.tab_b = TabMicro()
-        # self.tab_b.sig_main_label.connect(self.set_main_label)
-        # self.tabs.addTab(self.tab_macro, '    Macro    ')
-        # self.tabs.addTab(self.tab_b, '    Micro    ')
 
         box_v = QVBoxLayout()
         box_v.addWidget(self.main_label)
         box_v.addWidget(self.tab_macro)
         box_v.setStretchFactor(self.main_label, 1)
         box_v.setStretchFactor(self.tab_macro, 25)
-        box_v.setContentsMargins(3, 3, 3, 3)
+        box_v.setContentsMargins(5, 5, 5, 5)
         self.setLayout(box_v)
         # ddos dialog connect
-        self.ddos_dialog = DDOSDialog()
+        self.ddos_dialog = sub.DDOSDialog()
         self.tab_macro.req_get.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.iterate_post.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.micro_post.sig_check_ddos.connect(self.show_ddos_dialog)
         self.tab_macro.edit_editor.ss.sig_check_ddos.connect(self.show_ddos_dialog)
         # file name edit dialog
-        self.name_edit_dialog = NameEditDialog()
+        self.name_edit_dialog = sub.NameEditDialog()
         self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
         # self.name_edit_dialog.btn_ok.clicked.connect(self.nam)
 
@@ -432,10 +300,9 @@ class TabMacro(QWidget):
         split_v.setMinimumSize(200, 265)
         # splitter right
         split_h = QSplitter()
-        # split_h.setframe
         # split_h.setStyleSheet("""
         #     QSplitter::handle {
-        #         background-color: silver;
+        #         background-color: darkcyan;
         #     }
         #     """)
         split_h.addWidget(self.doc_board)
@@ -652,155 +519,7 @@ class TabMacro(QWidget):
         self.btn_do.setEnabled(b)
 
 
-class TableEnhanced(QTableWidget):
-    sig_main_label = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.setAlternatingRowColors(True)
-        self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.verticalHeader().setDefaultSectionSize(23)
-        self.horizontalHeader().setMinimumSectionSize(30)
-        self.verticalHeader().setSectionsClickable(False)
-        self.shortcuts()
-
-    def shortcuts(self):
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Up'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.move_up)  # 한 칸 위로
-        move_down = QShortcut(QKeySequence('Ctrl+Shift+Down'), self, context=Qt.WidgetShortcut)
-        move_down.activated.connect(self.move_down)  # 한 칸 아래로
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Left'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.move_top)  # 맨 위로
-        move_up = QShortcut(QKeySequence('Ctrl+Shift+Right'), self, context=Qt.WidgetShortcut)
-        move_up.activated.connect(self.move_bottom)  # 맨 아래로
-        copy_sheet = QShortcut(QKeySequence('Ctrl+C'), self, context=Qt.WidgetShortcut)
-        copy_sheet.activated.connect(self.copy_sheet)
-
-    def keyPressEvent(self, e):
-        super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
-        if e.key() == Qt.Key_Delete:  # 지우기
-            self.rows_delete(self._rows_selected())
-            self.resizeColumnsToContents()
-
-    def move_up(self):
-        sel = self._rows_selected()
-        if sel:
-            if not sel[0] == 0:
-                self.rows_paste(sel[0] - 1, self.rows_cut(sel, up=True), up=True)
-
-    def move_down(self):
-        sel = self._rows_selected()
-        if sel:
-            if not sel[-1] == self.rowCount() - 1:
-                self.rows_paste(sel[-1] + 2, self.rows_cut(sel, up=False), up=False)
-
-    def move_top(self):
-        if self._rows_selected():
-            self.rows_paste(0, self.rows_cut(self._rows_selected(), up=True), up=True)
-
-    def move_bottom(self):
-        if self._rows_selected():
-            self.rows_paste(self.rowCount(), self.rows_cut(self._rows_selected(), up=False), up=False)
-
-    def _rows_selected(self):
-        if self.selectedItems():
-            return sorted(list({i.row() for i in self.selectedItems()}))  # set comprehension
-
-    def rows_cut(self, rows_list, up):  # generator, table item -> table item
-        rows_list.reverse()
-        ii = 0
-        for r in rows_list:
-            yield [self.item(r + ii, c) for c in range(self.columnCount())]
-            ii += 1 if up else 0
-            self.removeRow(r + ii)  # 지우기
-
-    def rows_paste(self, where_to, rows_gen, up):
-        ii, n = 0, 0
-        col_origin = self.currentColumn()
-        for row in rows_gen:
-            self.insertRow(where_to + ii)
-            n += 1
-            for c in range(len(row)):
-                self.setItem(where_to + ii, c, QTableWidgetItem(row[c]))
-            ii -= 0 if up else 1
-        # current & selection
-        if up:
-            rng = QTableWidgetSelectionRange(where_to, 0, where_to + n - 1, self.columnCount() - 1)
-        else:
-            where_to -= 1
-            rng = QTableWidgetSelectionRange(where_to - n + 1, 0, where_to, self.columnCount() - 1)
-        self.setCurrentCell(where_to, col_origin)
-        self.setRangeSelected(rng, True)
-
-    def rows_delete(self, rows_list):
-        if rows_list:
-            if len(rows_list) == self.rowCount():
-                self.setRowCount(0)
-            else:
-                col_origin = self.currentColumn()
-                rows_list.reverse()
-                # t = time.time()
-                for r in rows_list:
-                    self.removeRow(r)
-                # print(time.time() - t)
-                pos_after = rows_list[0] - len(rows_list)  # 뒤집었으니까 -1 아니라 0
-                pos_after += 0 if self.rowCount() - 1 == pos_after else 1
-                self.setCurrentCell(pos_after, col_origin)
-
-    def rows_text_copy(self, rows_list=None):  # table item -> text
-        if rows_list is None:
-            rows_list = range(self.rowCount())
-        for row in rows_list:
-            yield [self.item(row, col).text() for col in range(self.columnCount())]
-
-    def rows_text_insert(self, where_to=None, editable=None, clickable=None, alignment=None):  # text -> table item
-        if where_to is None:
-            where_to = self.rowCount()
-        if editable is None:
-            editable = self.col_editable
-        if clickable is None:
-            clickable = self.col_clickable
-        if alignment is None:
-            alignment = self.col_alignment
-        n = 0
-        while True:
-            to_insert = (yield)
-            if to_insert is None:  # 꼼수
-                where_to = self.rowCount()
-                n = 0
-                continue
-            self.insertRow(where_to + n)
-            for col in range(self.columnCount()):
-                item = QTableWidgetItem(to_insert[col])
-                if not editable[col]:  # false 일때 플래그 제거
-                    item.setFlags(item.flags() ^ Qt.ItemIsEditable)
-                if not clickable[col]:
-                    item.setFlags(item.flags() ^ Qt.ItemIsEnabled)
-                if alignment[col]:
-                    item.setTextAlignment(alignment[col])  # ex) Qt.AlignCenter
-                self.setItem(where_to + n, col, item)
-            n += 1
-
-    @staticmethod
-    def convert_table_to_str(list_2d):  # 2d array -> text
-        return '\n'.join(['\t'.join([str(col) for col in row]) for row in list_2d])
-
-    @staticmethod
-    def convert_str_to_table(text):  # text -> 2d array
-        return [col.split('\t') for col in text.split('\n')]
-
-    def copy_sheet(self):
-        if self.selectedItems():
-            t = ''
-            for i in self.selectedItems():
-                if i.column() == self.columnCount() - 1:
-                    t = f'{t}{i.text()}\n'
-                else:
-                    t = f'{t}{i.text()}\t'
-            pyperclip.copy(t[:-1])
-
-
-class TableDoc(TableEnhanced):
+class TableDoc(sub.TableEnhanced):
     sig_doc_viewer = Signal(str)
 
     def __init__(self):
@@ -889,7 +608,6 @@ class TableDoc(TableEnhanced):
             else:
                 temp.add(code)
             ii += 1
-        print(rows_list)
         self.rows_delete(rows_list)
         if len(rows_list) == 0:
             self.sig_main_label.emit('중복되는 표제어가 존재하지 않습니다.')
@@ -994,7 +712,7 @@ class TableDoc(TableEnhanced):
     #         # print(i, vh, vs, self.columnWidth(1), self.columnWidth(2), self.width())
 
 
-class TableEdit(TableEnhanced):
+class TableEdit(sub.TableEnhanced):
     sig_insert_edit_sign = Signal(str)
 
     def __init__(self):
@@ -1041,34 +759,6 @@ class TableEdit(TableEnhanced):
             return temp[pick]
 
 
-class LineEnhanced(QLineEdit):
-    focused = Signal()
-
-    def __init__(self):
-        super().__init__()
-
-    def focusInEvent(self, e):
-        super().focusInEvent(e)
-        self.focused.emit()
-
-    def undo(self):
-        super().undo()
-        if self.text() == '':
-            super().undo()
-
-    def redo(self):
-        super().redo()
-        if self.text() == '':
-            super().redo()
-
-    def keyPressEvent(self, e):
-        super().keyPressEvent(e)
-        if e.key() == Qt.Key_Up:
-            self.undo()
-        elif e.key() == Qt.Key_Down:
-            self.redo()
-
-
 class DocBoard(QWidget):
     sig_doc_code = Signal(str)
 
@@ -1085,7 +775,7 @@ class DocBoard(QWidget):
         self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_option.currentIndexChanged.connect(self.cmb_option_change)
         # self.name_input = QLineEdit()
-        self.name_input = LineEnhanced()
+        self.name_input = sub.LineEnhanced()
         self.name_input.setMinimumWidth(100)
         self.name_input.setPlaceholderText('입력하여 문서 추가')
         self.name_input.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1137,7 +827,7 @@ class DocBoard(QWidget):
         self.table_doc.setFocus()
 
 
-class LineFind(LineEnhanced):
+class LineFind(sub.LineEnhanced):
     sig_find = Signal(str, int)
 
     def __init__(self):
@@ -1215,9 +905,10 @@ class DocViewer(QWidget):
         self.tabs.addTab(self.tab_view, '열람')
         self.tabs.addTab(self.tab_edit, '편집')
         self.tabs.tabBar().hide()
-        self.tabs.setMaximumHeight(24)
+        self.tabs.setMaximumHeight(self.cmb_info.height())  # 임시변통
         # viewer
         self.viewer = QPlainTextEdit()
+        self.viewer.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.viewer.setPlaceholderText('미리보기 화면')
         self.viewer.setStyleSheet("""
             QPlainTextEdit{
@@ -1239,7 +930,6 @@ class DocViewer(QWidget):
         box_v.addWidget(self.find_input)
         box_v.addWidget(self.viewer)
         box_v.setContentsMargins(0, 0, 0, 0)
-        box_v.setSpacing(5)
         self.setLayout(box_v)
 
     @Slot(str, str, bool)
@@ -1359,7 +1049,7 @@ class DiffViewer(QWidget):
         self.tabs.addTab(self.tab_macro, '')
         self.tabs.addTab(self.tab_micro, '')
         self.tabs.tabBar().hide()
-        self.tabs.setMaximumHeight(24)
+        self.tabs.setMaximumHeight(self.btn_yes.height())
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 0;}
@@ -1370,7 +1060,7 @@ class DiffViewer(QWidget):
         box_v.addWidget(self.browser)
         box_v.addWidget(self.tabs)
         box_v.setContentsMargins(0, 0, 0, 0)
-        box_v.setSpacing(5)
+        # box_v.setSpacing(5)
         self.setLayout(box_v)
 
     @Slot()
@@ -1426,7 +1116,7 @@ class ImgViewer(QWidget):
         box_v.addLayout(box_h)
         box_v.addWidget(self.label_img)
         box_v.setContentsMargins(0, 0, 0, 0)
-        box_v.setSpacing(5)
+        # box_v.setSpacing(5)
         self.setLayout(box_v)
 
 
@@ -1538,7 +1228,7 @@ class EditEditor(QWidget):
         self.cmb_doc_by = QComboBox()
         self.cmb_doc_by.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_doc_by.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
-        self.cmb_doc_by.addItems(['텍스트', '정규식', '분류:', '역링크', '포함'])
+        self.cmb_doc_by.addItems(['텍스트', '정규식', '분류:', '링크', '포함'])
         self.cmb_doc_do = QComboBox()
         self.cmb_doc_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_doc_do.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
@@ -1615,14 +1305,14 @@ class EditEditor(QWidget):
         self.cmb_main.setCurrentIndex(2)
         self.cmb_main.setCurrentIndex(0)
         # input
-        self.edit_input = LineEnhanced()
+        self.edit_input = sub.LineEnhanced()
         self.edit_input.setStyleSheet('font: 10.5pt \'Segoe UI\'')
         self.edit_input.returnPressed.connect(self.add_to_edit)
         box_edit.addWidget(self.table_edit)
         box_edit.addLayout(box_edit_combos)
         box_edit.addWidget(self.edit_input)
         box_edit.setContentsMargins(0, 0, 0, 0)
-        box_edit.setSpacing(5)
+        box_edit.setSpacing(6)
         self.setLayout(box_edit)
         
     def show_cmb(self, visible):
