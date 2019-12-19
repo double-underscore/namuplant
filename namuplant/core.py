@@ -191,6 +191,7 @@ class ReqPost(SeedSession):
     def find_replace(edit_list):
         text, summary = '', ''
         comp, subs = [], []
+        cat_p = re.compile(r'\[\[분류:.*?\]\]')
         for edit in edit_list:  # 사전 컴파일 & 분석
             if edit[1] == '문서':
                 if edit[2] == '수정':
@@ -251,14 +252,18 @@ class ReqPost(SeedSession):
                             comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\]( +)?(\n|$)'))
                             subs.append('')
                 elif edit[2] == '삽입':
-                    if edit[4] == '맨 앞':
+                    if edit[4] == '맨 위':
                         comp.append(re.compile(r'^'))
                         subs.append(f'{edit[5]}\n')
-                    elif edit[4] == '맨 뒤':
+                    elif edit[4] == '맨 아래':
                         comp.append(re.compile(r'$'))
                         subs.append(f'\n{edit[5]}')
+                    elif edit[4] == '분류 앞':
+                        comp.append(True)
+                        subs.append(edit[5])
                     elif edit[4] == '분류 뒤':
-                        pass
+                        comp.append(False)
+                        subs.append(edit[5])
             elif edit[1] == '요약':
                 summary = edit[5]
         while True:
@@ -269,7 +274,17 @@ class ReqPost(SeedSession):
                         text = comp[i].sub(subs[i], text)
                     except re.error:
                         continue
-                else:
+                elif type(comp[i]) is bool:  # 분류 삽입..
+                    cats = cat_p.findall(text)
+                    if cats:
+                        if subs[i] not in cats:
+                            if comp[i]:  # 앞
+                                text = text.replace(cats[0], f'{subs[i]}{cats[0]}', 1)
+                            else:  # 뒤
+                                text = text.replace(cats[-1], f'{cats[-1]}{subs[i]}', 1)
+                    else:
+                        text = f'{subs[i]}\n{text}'  # 미분류시 맨 위로
+                elif type(comp[i]) is str:  # 일반 텍스트
                     text = text.replace(comp[i], subs[i])
 
     def get_acl(self):

@@ -767,6 +767,9 @@ class DocBoard(QWidget):
         self.table_doc = TableDoc()
         self.table_doc.setStyleSheet("""
             QTableWidget::item:selected{
+                background-color: cadetblue;
+                color: white;}
+            QTableWidget::item:focus{
                 background-color: darkcyan;
                 color: white;}
             """)
@@ -912,6 +915,9 @@ class DocViewer(QWidget):
         self.viewer.setPlaceholderText('미리보기 화면')
         self.viewer.setStyleSheet("""
             QPlainTextEdit{
+                selection-background-color: cadetblue; 
+                selection-color: white;}
+            QPlainTextEdit:Focus{
                 selection-background-color: darkcyan; 
                 selection-color: white;}        
             """)
@@ -1207,6 +1213,9 @@ class EditEditor(QWidget):
         self.table_edit.setStyleSheet("""
             * {font: 10pt \'Segoe UI\'}
             QTableWidget::item:selected{
+                background-color: cadetblue;
+                color: white;}
+            QTableWidget::item:focus{
                 background-color: darkcyan;
                 color: white;}
             """)
@@ -1236,7 +1245,7 @@ class EditEditor(QWidget):
         self.cmb_doc_insert = QComboBox()
         self.cmb_doc_insert.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_doc_insert.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
-        self.cmb_doc_insert.addItems(['맨 앞', '맨 뒤', '분류 뒤'])
+        self.cmb_doc_insert.addItems(['맨 위', '맨 아래', '분류 앞', '분류 뒤'])
         # cmb_main 파일
         self.cmb_file = QComboBox()
         self.cmb_file.setStyleSheet('font: 10pt \'맑은 고딕\'')
