@@ -80,8 +80,7 @@ class MainWindow(QMainWindow):
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
         icon = QPixmap('icon.png')
-        # icon.scaledToHeight(30)
-        self.main_widget.main_label.setPixmap(icon.scaled(100, 100, Qt.KeepAspectRatio))
+        self.main_widget.main_label.setPixmap(icon.scaled(50, 50, Qt.KeepAspectRatio))
         # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')

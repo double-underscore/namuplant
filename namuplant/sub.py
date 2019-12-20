@@ -22,22 +22,50 @@ class DDOSDialog(QDialog):
         self.browser.setStyleSheet('border: 1px solid gray;')
         # self.browser.loadStarted.connect(self.test)
         # self.browser.loadFinished.connect(self.test2)
+        self.btn_zoom_in = QPushButton('+')
+        self.btn_zoom_in.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_zoom_in.setMaximumWidth(50)
+        self.btn_zoom_in.clicked.connect(self.zoom_in)
+        self.btn_zoom_out = QPushButton('-')
+        self.btn_zoom_out.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_zoom_out.setMaximumWidth(50)
+        self.btn_zoom_out.clicked.connect(self.zoom_out)
         self.btn = QPushButton('완료')
         self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.btn.clicked.connect(self.accept)
         # self.btn.clicked.connect(self.test2)
         self.abc = False
+        box_h = QHBoxLayout()
+        box_h.addWidget(self.btn_zoom_in)
+        box_h.addWidget(self.btn_zoom_out)
+        box_h.addWidget(self.btn)
+        box_h.setStretchFactor(self.btn_zoom_in, 1)
+        box_h.setStretchFactor(self.btn_zoom_out, 1)
+        box_h.setStretchFactor(self.btn, 18)
         box_v = QVBoxLayout()
         box_v.addWidget(self.label)
         box_v.addWidget(self.browser)
-        box_v.addWidget(self.btn)
-        box_v.setContentsMargins(3, 10, 3, 3)
+        box_v.addLayout(box_h)
+        box_v.setContentsMargins(8, 10, 8, 8)
         self.setLayout(box_v)
         # self.setWindowModality(Qt.ApplicationModal)
         self.setWindowTitle('reCAPTCHA')
         self.setWindowIcon(QIcon('icon.png'))
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
+        self.browser.setFocus()
         self.resize(480, 600)
+
+    def zoom_in(self):
+        self.zoom(True)
+
+    def zoom_out(self):
+        self.zoom(False)
+
+    def zoom(self, b):
+        if b:
+            self.browser.setZoomFactor(self.browser.zoomFactor() + 0.25)
+        else:
+            self.browser.setZoomFactor(self.browser.zoomFactor() - 0.25)
 
 
 class ConfigDialog(QDialog):

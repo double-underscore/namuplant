@@ -70,12 +70,6 @@ class SeedSession(QObject):
             except requests.exceptions.Timeout:
                 winsound.Beep(500, 50)
 
-    # def requester(self):
-    #     soup = ''
-    #     while True:
-    #         url, func, kwargs = (yield soup)
-    #         soup = self.request_soup(url, func, **kwargs)
-
 
 class ReqPost(SeedSession):
     sig_view_diff = Signal(str)
