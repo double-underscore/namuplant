@@ -126,8 +126,8 @@ class ConfigDialog(QDialog):
         self.line_delay.setValue(float(self.config['work']['DELAY']))
 
     def config_save(self):
-        self.config = {'login': {'ID': self.line_id.text(), 'PW': self.line_pw.text(),
-                                 'UMI': self.line_umi.text(), 'UA': self.line_ua.text()},
+        self.config = {'login': {'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
+                                 'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()},
                        'work': {'DELAY': self.line_delay.value()}}
         storage.write_config('config.ini', self.config)
         self.accept()

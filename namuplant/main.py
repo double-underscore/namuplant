@@ -14,6 +14,7 @@ from PySide2.QtGui import QIcon, QKeySequence, QPixmap, QTextCursor, QTextDocume
 from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
 
 from . import core, sub, storage
+from .__init__ import __version__
 process = psutil.Process(os.getpid())
 
 
@@ -36,7 +37,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setStyleSheet('font: 10pt \'맑은 고딕\'; color: #373a3c;')
         self.resize(800, 800)
-        self.setWindowTitle('namuplant')
+        self.setWindowTitle(f'namuplant {__version__}')
         self.setWindowIcon(QIcon('icon.png'))
         # 파일 메뉴
         act_load_doc_list = QAction('문서 열기', self)
@@ -53,7 +54,7 @@ class MainWindow(QMainWindow):
         act_on_top = QAction('항상 위', self)
         act_on_top.setCheckable(True)
         act_on_top.toggled.connect(self.action_on_top)
-        act_config = QAction('개인 정보', self)
+        act_config = QAction('개인정보', self)
         act_config.triggered.connect(self.action_config)
         # 실험 메뉴
         act_memory = QAction('RAM', self)
@@ -79,8 +80,6 @@ class MainWindow(QMainWindow):
         # 메인 위젯 구동
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
-        icon = QPixmap('icon.png')
-        self.main_widget.main_label.setPixmap(icon.scaled(50, 50, Qt.KeepAspectRatio))
         # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')
@@ -204,19 +203,24 @@ class MainWindow(QMainWindow):
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
-        # config dialog
+        # dialogs
         self.config_dialog = sub.ConfigDialog()
+        self.ddos_dialog = sub.DDOSDialog()
+        self.name_edit_dialog = sub.NameEditDialog()
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
         self.main_label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.main_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.main_label.setWordWrap(True)
-        self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         self.main_label.setOpenExternalLinks(True)
         #
-        self.tab_macro = TabMacro(self.config_dialog.config)
+        self.tab_macro = TabMacro()
         self.tab_macro.sig_main_label.connect(self.set_main_label)
+        self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
+        self.tab_macro.requester.sig_check_ddos.connect(self.show_ddos_dialog)
+        self.login_confirm()
 
         box_v = QVBoxLayout()
         box_v.addWidget(self.main_label)
@@ -225,20 +229,22 @@ class MainWidget(QWidget):
         box_v.setStretchFactor(self.tab_macro, 25)
         box_v.setContentsMargins(5, 5, 5, 5)
         self.setLayout(box_v)
-        # ddos dialog connect
-        self.ddos_dialog = sub.DDOSDialog()
-        self.tab_macro.req_get.sig_check_ddos.connect(self.show_ddos_dialog)
-        self.tab_macro.iterate_post.sig_check_ddos.connect(self.show_ddos_dialog)
-        self.tab_macro.micro_post.sig_check_ddos.connect(self.show_ddos_dialog)
-        self.tab_macro.edit_editor.ss.sig_check_ddos.connect(self.show_ddos_dialog)
-        # file name edit dialog
-        self.name_edit_dialog = sub.NameEditDialog()
-        self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
-        # self.name_edit_dialog.btn_ok.clicked.connect(self.nam)
 
     @Slot(str)
     def set_main_label(self, t):
         self.main_label.setText(t)
+
+    def login_confirm(self):
+        self.tab_macro.requester.load_config(self.config_dialog.config)
+        if self.tab_macro.requester.login():
+            self.tab_macro.setEnabled(True)
+            self.set_main_label(f'namuplant {__version__}')
+            # icon = QPixmap('icon.png')
+            # self.main_label.setPixmap(icon.scaled(50, 50, Qt.KeepAspectRatio))
+        else:
+            self.tab_macro.setEnabled(False)
+            self.set_main_label(
+                '주어진 정보로는 로그인 할 수 없습니다.\n메뉴의 \'설정-개인정보\'에서 로그인 정보를 입력하십시오.')
 
     @Slot(object)
     def show_ddos_dialog(self, obj):
@@ -251,8 +257,7 @@ class MainWidget(QWidget):
         self.config_dialog.config_show_text()
         ddd = self.config_dialog.exec_()
         if ddd == QDialog.Accepted:
-            self.tab_macro.iterate_post.load_config(self.config_dialog.config)
-            self.tab_macro.micro_post.load_config(self.config_dialog.config)
+            self.login_confirm()
 
     def show_name_edit_dialog(self):
         self.name_edit_dialog.show()
@@ -261,12 +266,17 @@ class MainWidget(QWidget):
 class TabMacro(QWidget):
     sig_main_label = Signal(str)
 
-    def __init__(self, config):
+    def __init__(self):
         super().__init__()
-        self.config = config
+        self.requester = core.Requester()
+        # define main widgets
         self.doc_board = DocBoard()
         self.tabs_viewer = TabViewers()
-        self.edit_editor = EditEditor()
+        self.edit_editor = EditEditor(self.requester)
+        # define main tools
+        self.req_get = core.ReqGet(self.requester, self.doc_board.table_doc.rows_text_insert())
+        self.iterate_post = core.Iterate(self.requester)
+        self.micro_post = core.Micro(self.requester)
         # last row: get link
         self.btn_get = QPushButton('右 OFF', self)
         self.btn_get.setCheckable(True)
@@ -339,7 +349,7 @@ class TabMacro(QWidget):
         # thread get_click
         mouse.on_right_click(self.get_start)
         self.th_get = QThread()
-        self.req_get = core.ReqGet(self.doc_board.table_doc.rows_text_insert())
+
         self.req_get.finished.connect(self.get_finish)
         self.req_get.sig_label_text.connect(self.str_to_main)
         # self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
@@ -348,8 +358,6 @@ class TabMacro(QWidget):
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
         self.th_iterate = QThread()
-        self.iterate_post = core.Iterate()
-        self.iterate_post.load_config(self.config)
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.sig_label_text.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
@@ -362,8 +370,6 @@ class TabMacro(QWidget):
         self.th_iterate.started.connect(self.iterate_post.work)
         # thread micro
         self.th_micro = QThread()
-        self.micro_post = core.Micro()
-        self.micro_post.load_config(self.config)
         self.micro_post.finished.connect(self.micro_finish)
         self.micro_post.sig_label_text.connect(self.str_to_main)
         self.micro_post.sig_text_view.connect(self.tabs_viewer.doc_viewer.set_text_view)
@@ -773,7 +779,7 @@ class DocBoard(QWidget):
                 color: white;}
             """)
         self.cmb_option = QComboBox(self)
-        self.cmb_option.addItems(['1개', '역링크', '분류', '이미지'])
+        self.cmb_option.addItems(['1개', '역링크', '분류:', '이미지'])
         self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_option.currentIndexChanged.connect(self.cmb_option_change)
         # self.name_input = QLineEdit()
@@ -795,7 +801,10 @@ class DocBoard(QWidget):
 
     @Slot()
     def insert(self):
-        self.sig_doc_code.emit(parse.quote(self.name_input.text()))
+        if self.cmb_option.currentIndex() == 2:  # 분류:
+            self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+        else:
+            self.sig_doc_code.emit(parse.quote(self.name_input.text()))
         self.name_input.clear()
 
     @Slot()
@@ -809,13 +818,6 @@ class DocBoard(QWidget):
             self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
         else:
             self.name_input.setPlaceholderText('입력하여 문서 추가')
-
-        if i == 2:  # 분류
-            if not self.name_input.text()[0:3] == '분류:':
-                self.name_input.setText(f'분류:{self.name_input.text()}')
-        else:
-            if self.name_input.text() == '분류:':
-                self.name_input.clear()
 
     def insert_file(self):
         insert = self.table_doc.rows_text_insert(editable=[False, True, False])
@@ -1202,9 +1204,9 @@ class TabViewers(QTabWidget):
 
 
 class EditEditor(QWidget):
-    def __init__(self):
+    def __init__(self, requester):
         super().__init__()
-        self.ss = core.SeedSession()
+        self.requester = requester
         box_edit = QVBoxLayout()
         box_edit_combos = QHBoxLayout()
         # table edit
@@ -1370,7 +1372,7 @@ class EditEditor(QWidget):
         self.edit_input.setText(self.cmb_file_cat.itemText(i))
 
     def cmb_image(self):
-        soup = self.ss.request_soup('get', f'{core.SITE_URL}/Upload')
+        soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
         lic = [t.text for t in soup.select('#licenseSelect > option')]
         lic.remove('선택')
         lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
