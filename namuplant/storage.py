@@ -30,7 +30,6 @@ def read_config(file_name):
     config = configparser.ConfigParser()
     config.optionxform = str
     config.read(file_name, encoding='utf-8')
-    print('test')
     return dict(zip(config.sections(), [dict([v for v in config[section].items()]) for section in config.sections()]))
 
 

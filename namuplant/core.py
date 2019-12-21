@@ -24,15 +24,15 @@ def shorten(n: int, c='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
     return t
 
 
-class SeedSession(QObject):
+class Requester(QObject):
     sig_check_ddos = Signal(object)
-    sig_label_text = Signal(str)
 
     def __init__(self):  # 반복 필요 없는 것
         super().__init__()
         self.is_ddos_checked = False
         self.URL_LOGIN = f'{SITE_URL}/member/login'
         self.s = requests.Session()
+        # self.login()
 
     def load_config(self, config):
         # config = storage.read_config('config.ini')
@@ -49,40 +49,41 @@ class SeedSession(QObject):
         member = soup.select('nav > ul > li > div > div > div')
         if member[1].text == 'Member':
             print(f'login SUCCESS {member[0].text}')
+            return True
         else:
             print('login FAILURE')
+            return False
 
     def request_soup(self, method, url, **kwargs):  # 디도스 검사 리퀘스트
-        # func = self.s.post if func == 'post' else self.s.get
         while True:
             try:
                 r = self.s.request(method, url, headers={'referer': url}, cookies=self.s.cookies, timeout=5, **kwargs)
-                # r = func(url, headers={'referer': url}, cookies=self.s.cookies, timeout=5, **kwargs)
-                print(r.status_code)
+                print(r.status_code, method)
                 if r.status_code == 429:  # too many requests
                     self.is_ddos_checked = False
                     self.sig_check_ddos.emit(self)
                     while not self.is_ddos_checked:
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                     continue
                 else:
                     return BeautifulSoup(r.text, 'html.parser')
             except requests.exceptions.Timeout:
                 winsound.Beep(500, 50)
 
-    # def requester(self):
-    #     soup = ''
-    #     while True:
-    #         url, func, kwargs = (yield soup)
-    #         soup = self.request_soup(url, func, **kwargs)
+
+class ReqBasic(QObject):
+    sig_label_text = Signal(str)
+    
+    def __init__(self, requester):
+        super().__init__()
+        self.requester = requester
 
 
-class ReqPost(SeedSession):
+class ReqPost(ReqBasic):
     sig_view_diff = Signal(str)
 
-    def __init__(self):
-        super().__init__()
-        # self.edit_list = []
+    def __init__(self, requester):
+        super().__init__(requester)
         self.diff_done = 1
 
     def get_text(self, doc_code):
@@ -90,13 +91,13 @@ class ReqPost(SeedSession):
         text = ''
         error_log = ''
         while True:
-            soup = self.request_soup('get', doc_url)
+            soup = self.requester.request_soup('get', doc_url)
             baserev = soup.find(attrs={'name': 'baserev'})['value']
             identifier = soup.find(attrs={'name': 'identifier'})['value']
-            if identifier == f'm:{self.INFO["ID"]}':  # 로그인 안 되어 있으면 로그인
+            if identifier == f'm:{self.requester.INFO["ID"]}':  # 로그인 안 되어 있으면 로그인
                 break
             else:
-                self.login()
+                self.requester.login()
         if baserev == '0':
             error_log = '문서가 존재하지 않습니다.'
         else:
@@ -126,14 +127,14 @@ class ReqPost(SeedSession):
         # identifier, baserev, text, error, log
         doc_url = f'{SITE_URL}/edit/{doc_code}'
         while True:
-            soup = self.request_soup('post', doc_url)  # 가짜 포스트
+            soup = self.requester.request_soup('post', doc_url)  # 가짜 포스트
             if self.is_captcha(soup):  # 서버 말고 편집창에 뜨는 리캡차
-                self.login()
+                self.requester.login()
             else:
                 break
         token = soup.find(attrs={'name': 'token'})['value']
         # 진짜 포스트
-        soup = self.request_soup(
+        soup = self.requester.request_soup(
             'post', doc_url,
             data={'identifier': identifier, 'baserev': rev, 'text': text, 'log': summary, 'token': token, 'agree': 'Y'},
             files={'file': None})
@@ -188,39 +189,105 @@ class ReqPost(SeedSession):
             return True
 
     @staticmethod
-    def find_replace(text, edit_list, title=''):
-        # todo if 편집
-        find_temp = ''
-        summary = ''
-        option_temp = ''
-        for edit in edit_list:  # 0 num, 1 opt1, 2 opt2, 3 opt3, 4 text
-            if edit[1] == '일반':  # 문서 내 모든 텍스트
-                if edit[3] == '찾기':
-                    option_temp = edit[4]
-                    find_temp = edit[5]
-                elif edit[3] == '바꾸기':
-                    if option_temp == '텍스트':
-                        text = text.replace(find_temp, edit[5])
-                    elif option_temp == '정규식':
-                        try:
-                            text = re.sub(find_temp, edit[5], text)
-                        except re.error:
-                            # print('regex error!')
-                            continue
-                elif edit[3] == '넣기':
-                    if edit[4] == '맨 앞':
-                        text = f'{edit[5]}\n{text}'
-                    elif edit[4] == '맨 뒤':
-                        text = f'{text}\n{edit[5]}'
-                    elif edit[4] == '분류':
-                        text = re.sub(r'(\[\[분류:.*?\]\].*?)(\n|$)', rf'\g<1>{edit[5]}\g<2>', text)
-            elif edit[1] == '기타':
-                pass
-            elif edit[1] == '요약':  # 편집요약
+    def find_replace(edit_list):
+        text, summary = '', ''
+        comp, subs = [], []
+        cat_p = re.compile(r'\[\[분류:.*?\]\]')
+        for edit in edit_list:  # 사전 컴파일 & 분석
+            if edit[1] == '문서':
+                if edit[2] == '수정':
+                    if edit[3] == '텍스트':
+                        if edit[4] == '찾기':
+                            comp.append(edit[5])
+                        elif edit[4] == '바꾸기':
+                            subs.append(edit[5])
+                        elif edit[4] == '지우기':
+                            comp.append(edit[5])
+                            subs.append('')
+                    elif edit[3] == '정규식':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(edit[5]))
+                        elif edit[4] == '바꾸기':
+                            subs.append(edit[5])
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(edit[5]))
+                            subs.append('')
+                    elif edit[3] == '분류:':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(rf'\[\[분류: ?{re.escape(edit[5])}(?P<blur>#blur)?\]\]'))
+                        elif edit[4] == '바꾸기':
+                            subs.append(rf'[[분류:{edit[5]}\g<blur>]]')
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(rf'\[\[분류: ?{re.escape(edit[5])}.*?\]\]'))
+                            subs.append('')
+                    elif edit[3] == '링크':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(
+                                rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
+                                rf'((?P<c>\||#)|(?P<f>\]))(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
+                        elif edit[4] == '바꾸기':
+                            if '|' in edit[5]:  # a -> a|b
+                                tmp_a = edit[5][:edit[5].find('|')]
+                                tmp_b = edit[5][edit[5].find('|') + 1:]
+                                subs.append(rf'\g<b>[[{tmp_a}\g<c>\g<d>|{tmp_b}\g<f>\g<e>')
+                                # [[a|b|c]]인 경우
+                                comp.append(re.compile(
+                                    rf'\[\[{re.escape(tmp_a)}(?P<a>|#.*?)(?P<b>\|.*?)\|{re.escape(tmp_b)}\]\]'))
+                                subs.append(rf'[[{tmp_a}\g<a>\g<b>]]')
+                            else:  # a -> b
+                                subs.append(rf'\g<b>[[{edit[5]}\g<c>\g<d>\g<f>\g<e>')
+                                # [[a|a]]인 경우
+                                comp.append(re.compile(
+                                    rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
+                                subs.append(rf'[[{edit[5]}\g<a>]]')
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(
+                                rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
+                                rf'(\||(?P<f>\])|#)(.|\n)*?(?P<c>(?(a)|(?(b)\]\]|)))(?(f)\]|\]\])'))
+                            subs.append(r'\g<a>\g<c>')
+                    elif edit[3] == '포함':
+                        if edit[4] == '찾기':
+                            comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}(?P<after>.*?\)\])'))
+                        elif edit[4] == '바꾸기':
+                            subs.append(rf'[include({edit[5]}\g<after>')
+                        elif edit[4] == '지우기':
+                            comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}.*?\)\]( +)?(\n|$)'))
+                            subs.append('')
+                elif edit[2] == '삽입':
+                    if edit[4] == '맨 위':
+                        comp.append(re.compile(r'^'))
+                        subs.append(f'{edit[5]}\n')
+                    elif edit[4] == '맨 아래':
+                        comp.append(re.compile(r'$'))
+                        subs.append(f'\n{edit[5]}')
+                    elif edit[4] == '분류 앞':
+                        comp.append(True)
+                        subs.append(edit[5])
+                    elif edit[4] == '분류 뒤':
+                        comp.append(False)
+                        subs.append(edit[5])
+            elif edit[1] == '요약':
                 summary = edit[5]
-            elif edit[1] == '복구':  # 복구 옵션
-                pass
-        return text, summary
+        while True:
+            text = (yield text, summary)
+            for i in range(len(comp)):
+                if type(comp[i]) is re.Pattern:  # 정규식
+                    try:
+                        text = comp[i].sub(subs[i], text)
+                    except re.error:
+                        continue
+                elif type(comp[i]) is bool:  # 대충 분류 삽입
+                    cats = cat_p.findall(text)
+                    if cats:
+                        if subs[i] not in cats:
+                            if comp[i]:  # 앞
+                                text = text.replace(cats[0], f'{subs[i]}{cats[0]}', 1)
+                            else:  # 뒤
+                                text = text.replace(cats[-1], f'{cats[-1]}{subs[i]}', 1)
+                    else:
+                        text = f'{subs[i]}\n{text}'  # 미분류시 맨 위로
+                elif type(comp[i]) is str:  # 일반 텍스트
+                    text = text.replace(comp[i], subs[i])
 
     def get_acl(self):
         pass
@@ -272,12 +339,10 @@ class Iterate(ReqPost):
     sig_enable_pause = Signal(bool)
     finished = Signal()
 
-    def __init__(self):
-        super().__init__()
-        # logged_in = self.login()
-        # self.sig_label_text.emit(logged_in)
+    def __init__(self, requester):
+        super().__init__(requester)
         self.is_quit = False
-        self.doc_list = []
+        self.doc_list = []  # main.iterate_start
         self.edit_dict = {}
         self.index_speed = 0
 
@@ -311,15 +376,17 @@ class Iterate(ReqPost):
                     edit_row = i
                     edit_index = self.doc_list[i][0][1:]  # 편집사항 순번
                     self.sig_label_text.emit(f'편집사항 {edit_index}번 진행 중입니다.')
+                    upload_t, upload_s = '', ''
                     if self.edit_dict[edit_index][0][1] == '파일':  # 업로드 시에는 반드시 요약보다 파일이 앞에 와야 됨
                         upload_t, upload_s = self.upload_text(self.edit_dict[edit_index])  # 파일 문서 텍스트, 요약
                     else:
-                        upload_t, upload_s = '', ''
+                        replacer = self.find_replace(self.edit_dict[edit_index])
+                        replacer.send(None)
                     edit_log_index = self.time_edit_log(edit_index)
                     for row in self.edit_dict[edit_index]:
-                        edit_logger.send({'index': edit_log_index,
-                                          'opt1': row[1], 'opt2': row[2], 'opt3': row[3], 'opt4': row[4], 'edit': row[5]})
-                elif self.doc_list[i][0][0] == '^':  # 중단자
+                        edit_logger.send({'index': edit_log_index, 'opt1': row[1], 'opt2': row[2], 'opt3': row[3],
+                                          'opt4': row[4], 'edit': row[5]})
+                elif self.doc_list[i][0][0] == '!':  # 중단자
                     self.sig_label_text.emit('작업이 중단되었습니다.')
                     self.sig_doc_remove.emit(i - deleted)
                     break
@@ -328,7 +395,7 @@ class Iterate(ReqPost):
                         label = f'( {i + 1} / {total} ) {self.doc_list[i][1]}'
                         self.sig_label_text.emit(label)
 
-                        if self.doc_list[i][0][0] == '@':  # 파일. 0번열의 0번째 문자가 @
+                        if self.doc_list[i][0][0] == '$':  # 파일. 0번열의 0번째 문자가 $
                             post_error = self.upload(self.doc_list[i][0][1:], self.doc_list[i][1], upload_t, upload_s)
                             doc_logger.send({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                              'rev': f'r0', 'time': self.time_doc_log(),
@@ -339,14 +406,14 @@ class Iterate(ReqPost):
                                                          self.doc_list[i][2])
                                 post_rev = 'evert'
                             else:  # 편집
-                                post_rev, post_error = self.edit(self.doc_list[i][0], self.doc_list[i][1],
-                                                                 self.edit_dict[edit_index])  # 포스트
+                                post_rev, post_error = self.edit(self.doc_list[i][0], self.doc_list[i][1], replacer)
+
                             doc_logger.send({'code': self.doc_list[i][0], 'title': self.doc_list[i][1],
                                              'rev': f'r{post_rev}', 'time': self.time_doc_log(),
                                              'index': edit_log_index, 'error': post_error})
                         if self.index_speed == 1:  # 저속 옵션
                             t2 = time.time()
-                            waiting = self.DELAY - (t2 - t1)
+                            waiting = self.requester.DELAY - (t2 - t1)
                             if waiting > 0:
                                 time.sleep(waiting)
                             t1 = time.time()
@@ -371,13 +438,13 @@ class Iterate(ReqPost):
             edit_logger.close()
         self.finished.emit()
 
-    def edit(self, doc_code, doc_name, edit_list):
+    def edit(self, doc_code, doc_name, replacer):
         # 획득
         text_before, baserev, identifier, error = self.get_text(doc_code)
         # data = self.get_text(doc_code)  # identifier, baserev, text, error
         if not error:  # 권한 X, 문서 X
             # 변경
-            text_after, summary = self.find_replace(text_before, edit_list, doc_name)
+            text_after, summary = replacer.send(text_before)
             # 비교
             self.sig_enable_pause.emit(False)
             error = self.diff(text_before, text_after)
@@ -402,13 +469,13 @@ class Iterate(ReqPost):
             error_log = '되돌릴 리비전이 지정되어 있지 않습니다.'
         else:
             while True:
-                soup = self.request_soup('post', f'{SITE_URL}/revert/{doc_code}',
-                                         data={'rev': rev, 'identifier': f'm:{self.INFO["ID"]}', 'log': summary})
-                print(soup.text)
+                soup = self.requester.request_soup(
+                    'post', f'{SITE_URL}/revert/{doc_code}',
+                    data={'rev': rev, 'identifier': f'm:{self.requester.INFO["ID"]}','log': summary})
                 if soup.h1.text == '오류':
-                    error_temp = soup.h1.next_sibling.next_sibling.text
+                    error_temp = soup.select('article > div')[0].text
                     if error_temp == 'reCAPTCHA 인증이 실패했습니다.':  # 로그인 확인용
-                        self.login()
+                        self.requester.login()
                     else:
                         error_log = error_temp
                         break
@@ -420,14 +487,14 @@ class Iterate(ReqPost):
         doc_url = f'{SITE_URL}/Upload'
         if not summary:
             summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
-        multi_data = {'baserev': '0', 'identifier': f'm:{self.INFO["ID"]}', 'document': doc_name, 'log': summary,
-                      'text': text}
+        multi_data = {'baserev': '0', 'identifier': f'm:{self.requester.INFO["ID"]}', 'document': doc_name,
+                      'log': summary, 'text': text}
         try:
             with open(file_dir, 'rb') as f:
                 while True:
-                    soup = self.request_soup('post', doc_url, data=multi_data, files={'file': f})
+                    soup = self.requester.request_soup('post', doc_url, data=multi_data, files={'file': f})
                     if self.is_captcha(soup):
-                        self.login()
+                        self.requester.login()
                     else:
                         break
             error_log = self.has_alert(soup)
@@ -439,7 +506,8 @@ class Iterate(ReqPost):
 
     @staticmethod
     def upload_text(edit_list, summary=''):
-        data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '', 'lic': '제한적 이용', 'cat': ''}
+        data = {'cite': '', 'date': '', 'author': '', 'etc': '', 'explain': '',
+                'lic': '제한적 이용', 'cat': '파일/미분류'}
         for edit in edit_list:
             if edit[1] == '파일':
                 if edit[3] == '본문':
@@ -453,7 +521,7 @@ class Iterate(ReqPost):
                         data['etc'] = edit[5]
                     elif edit[4] == '설명':
                         data['explain'] = edit[5]
-                elif edit[3] == '분류':
+                elif edit[3] == '분류:':
                     data['cat'] = edit[5]
                 elif edit[3] == '라이선스':
                     data['lic'] = edit[5]
@@ -473,8 +541,8 @@ class Micro(ReqPost):
     sig_enable_iterate = Signal(bool)
     finished = Signal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, requester):
+        super().__init__(requester)
         self.data = {}
         self.edits = []
         self.doc_code = ''
@@ -492,7 +560,7 @@ class Micro(ReqPost):
     def view(self):
         editable = False
         doc_name = parse.unquote(self.doc_code)
-        if self.doc_code[0] == '@':  # 파일
+        if self.doc_code[0] == '$':  # 파일
             if len(doc_name) > 50:
                 doc_name = f'...{doc_name[-50:]}'
             label = f'\'{doc_name[1:]}\' 파일을 열람중입니다.'
@@ -501,14 +569,14 @@ class Micro(ReqPost):
             if self.doc_code[0] == '#':  # 편집 지시자
                 label = f'{doc_name[1:]}번 편집사항을 열람 중입니다.'
                 text = f'{doc_name[1:]}번 편집사항'
-            elif self.doc_code[0] == '^':  # 중단자
+            elif self.doc_code[0] == '!':  # 중단자
                 label = '중단점을 열람 중입니다.'
                 text = '중단점'
             else:  # 문서
                 text, _, _, _ = self.get_text(self.doc_code)
                 # data = self.get_text(self.doc_code)
                 if text:
-                    label = f'\'{doc_name}\' 문서를 열람 중입니다.'
+                    label = f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 열람 중입니다.'
                     editable = True
                 else:  # 문서 존재 X
                     label = f'\'{doc_name}\' 문서는 존재하지 않습니다.'
@@ -518,7 +586,7 @@ class Micro(ReqPost):
         self.finished.emit()
 
     def edit(self):
-        # todo 편집 루프 해소
+        # todo 편집 루프 제네레이터로 변경
         # todo 비교 시 취소하면 편집 종료되는 문제
 
         self.do_post = False
@@ -527,11 +595,12 @@ class Micro(ReqPost):
         # data = self.get_text(self.doc_code)
         doc_name = parse.unquote(self.doc_code)
         if error:  # 권한 X
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집할 권한이 없습니다.')
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 편집할 권한이 없습니다.')
+            time.sleep(0.3)
         else:
             self.sig_enable_iterate.emit(False)
             self.sig_text_edit.emit(text_before)
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 편집 중입니다.')
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{self.doc_code}\">{doc_name}</a> 문서를 편집 중입니다.')
             while not self.do_post:
                 time.sleep(0.1)
             if self.do_cancel:
@@ -551,7 +620,9 @@ class Micro(ReqPost):
         self.finished.emit()
 
     def apply(self, text_before, edit_list):
-        text_after, _ = self.find_replace(text_before, edit_list)
+        replacer = self.find_replace(edit_list)
+        replacer.send(None)
+        text_after, _ = replacer.send(text_before)
         return text_after
         # error = self.diff(text_before, text_after)
         # if error:
@@ -560,12 +631,12 @@ class Micro(ReqPost):
         #     return text_after
 
 
-class ReqGet(SeedSession):
+class ReqGet(ReqBasic):
     send_code_list = Signal(list)
     finished = Signal()
 
-    def __init__(self, doc_insert):
-        super().__init__()
+    def __init__(self, requester, doc_insert):
+        super().__init__(requester)
         self.is_quit = False
         self.option = 0
         self.mode = 0  # 직접 입력
@@ -637,27 +708,31 @@ class ReqGet(SeedSession):
 
     def get_one(self, doc_code):  # 존재여부 검사
         doc_name = parse.unquote(doc_code)
-        if self.is_exist_read(self.request_soup('get', f'{SITE_URL}/w/{doc_code}')):
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서를 목록에 추가했습니다.')
+        if self.is_exist_read(self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}')):
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a> 문서를 목록에 추가했습니다.')
             return doc_code
         else:
-            self.sig_label_text.emit(f'\'{doc_name}\' 문서는 존재하지 않습니다.')
+            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a> 문서는 존재하지 않습니다.')
 
     def get_backlink(self, doc_code):
         total = 0
         doc_name = parse.unquote(doc_code)
-        soup = self.request_soup('get', f'{SITE_URL}/backlink/{doc_code}')
+        soup = self.requester.request_soup('get', f'{SITE_URL}/backlink/{doc_code}')
         for namespace in list(map(lambda x: parse.quote(x.get('value')), soup.select('select:nth-child(2) > option'))):
             tail = ''
             while True:
                 if self.is_quit:
-                    self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
-                                             f'\n\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.')
+                    self.sig_label_text.emit(
+                        f'정지 버튼을 눌러 중단되었습니다.<br>'
+                        f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 '
+                        f'<a href=\"{SITE_URL}/backlink/{doc_code}\">역링크</a> 문서를 {total}개 가져왔습니다.')
                     return
-                self.sig_label_text.emit(f'{doc_name}의 역링크 {parse.unquote(namespace)} 가져오는 중... ( +{total} )'
-                                         f'\n{parse.unquote(tail[5:-1])}')
-                # soup = self.request_soup(f'{SITE_URL}/backlink/{doc_code}?namespace={namespace}{added}', 'get')
-                soup = self.request_soup('get', f'{SITE_URL}/backlink/{doc_code}?{tail}namespace={namespace}&flag=0')
+                self.sig_label_text.emit(
+                    f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 역링크 '
+                    f'<a href=\"{SITE_URL}/backlink/{doc_code}?namespace={namespace}\">{parse.unquote(namespace)}</a> '
+                    f'가져오는 중... ( + {total} )<br>{parse.unquote(tail[5:-1])}')
+                soup = self.requester.request_soup('get',
+                                                   f'{SITE_URL}/backlink/{doc_code}?{tail}namespace={namespace}&flag=0')
                 for v in soup.select('article > div > div > div > ul > li > a'):  # 표제어 목록
                     if not v.next_sibling[2:-1] == 'redirect':
                         yield v.get('href')[3:]
@@ -668,79 +743,38 @@ class ReqGet(SeedSession):
                 else:
                     tail = tail[tail.find('?from=') + 1:tail.find('&') + 1]
                     # added = added[added.find('?from'):].replace('\'', '%27')
-        self.sig_label_text.emit(f'\'{doc_name}\'의 역링크 문서를 {total}개 가져왔습니다.')
+        self.sig_label_text.emit(
+            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 '
+            f'<a href=\"{SITE_URL}/backlink/{doc_code}\">역링크</a> 문서를 {total}개 가져왔습니다.')
 
     def get_cat(self, doc_code):
         total = 0
         doc_name = parse.unquote(doc_code)
-        soup = self.request_soup('get', f'{SITE_URL}/w/{doc_code}')
+        soup = self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}')
         spaces = soup.select('.cl')
         for i in range(len(spaces)):
             name = (lambda x: x[x.rfind(' ') + 1:])(spaces[i].select('h2')[0].text)
-            self.sig_label_text.emit(f'{doc_name}의 하위 {name} 가져오는 중... ( +{total} )\n')
-            for v in spaces[i].select('div.c > div > ul > li > a'):
+            self.sig_label_text.emit(
+                f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 하위 {name} 가져오는 중... ( + {total} )')
+            for v in spaces[i].select('ul > li > a'):
                 yield v.get('href')[3:]
                 total += 1
             if spaces[i].select('div > div > a'):  # 다음 버튼
                 tail = (lambda x: x[x.find('?namespace='):])(spaces[i].select('div > div > a')[1].get('href'))
                 while True:
                     if self.is_quit:
-                        self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
-                                                 f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
+                        self.sig_label_text.emit(
+                            f'정지 버튼을 눌러 중단되었습니다.<br>'
+                            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>에 분류된 문서를 {total}개 가져왔습니다.')
                         return
                     else:
-                        new_soup = self.request_soup('get', f'{SITE_URL}/w/{doc_code}{tail}')
-                        for v in new_soup.select('.cl')[i].select('div.c > div > ul > li > a'):
+                        new_soup = self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}{tail}')
+                        for v in new_soup.select('.cl')[i].select('ul > li > a'):
                             yield v.get('href')[3:]
                             total += 1
                         tail = (lambda x: '' if x is None else x[x.find('?namespace='):])(
                             new_soup.select('.cl')[i].select('div > div > a')[1].get('href'))
                         if not tail:
                             break
-        self.sig_label_text.emit(f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-
-    def get_cat_old(self, doc_code):
-        total = 0
-        n = 0
-        doc_name = parse.unquote(doc_code)
-        btn_done = 0
-        added = ''
-        soup = self.request_soup('get', f'{SITE_URL}/w/{doc_code}')
-        divs = soup.select('div.wiki-content > div')
-        h2s = list(map(lambda x: x.text[x.text.rfind(' ') + 1:], soup.select('h2.wiki-heading')))
-        # divs 0 문서내용 1 문서수 2 목록 3 문서수 4 버튼(있으면) 5 목록 6 버튼(있으면) ....
-        for i in range(len(divs)):
-            is_list = divs[i].select('div > ul > li > a')
-            is_btn = divs[i].select('a.btn')
-            if is_btn:  # 버튼. 같은 버튼이 목록 앞뒤로 중복
-                if btn_done == 0:
-                    added = divs[i].select('a')[1].get('href')
-                    btn_done = 1
-                elif btn_done == 1:
-                    btn_done = 0
-            elif is_list:  # 목록
-                namespace = h2s[n]
-                n += 1
-                self.sig_label_text.emit(f'{doc_name}의 하위 {namespace} 가져오는 중... ( +{total} )\n')
-                for v in is_list:  # 첫번째 페이지 획득
-                    yield v.get('href')[3:]
-                    total += 1
-                while True:  # 한 페이지
-                    if self.is_quit:
-                        self.sig_label_text.emit(f'정지 버튼을 눌러 중지되었습니다.'
-                                                 f'\n\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-                        return
-                    if added:
-                        added_unquote = parse.unquote(added[added.find('&cfrom=') + 7:])
-                        self.sig_label_text.emit(
-                            f'\'{doc_name}\'의 하위 {namespace} 가져오는 중... ( +{total} )\n{added_unquote}')
-                        soup_new = self.request_soup('get', f'{SITE_URL}/w/{doc_code}{added}')
-                        divs_new = soup_new.select('div.wiki-content > div')
-                        for v in divs_new[i].select('div > ul > li > a'):
-                            yield v.get('href')[3:]
-                            total += 1
-                        added = divs_new[i - 1].select('a')[1].get('href')  # 버튼에서 값 추출
-                    else:
-                        break
-        self.sig_label_text.emit(f'\'{doc_name}\'에 분류된 문서를 {total}개 가져왔습니다.')
-        return
+        self.sig_label_text.emit(
+            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>에 분류된 문서를 {total}개 가져왔습니다.')
