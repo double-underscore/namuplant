@@ -26,6 +26,7 @@ def shorten(n: int, c='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 
 class Requester(QObject):
     sig_check_ddos = Signal(object)
+    sig_timeout = Signal(object)
 
     def __init__(self):  # 반복 필요 없는 것
         super().__init__()
@@ -34,10 +35,10 @@ class Requester(QObject):
         self.s = requests.Session()
         # self.login()
 
-    def load_config(self, config):
+    def load_config(self, c_login, c_work):
         # config = storage.read_config('config.ini')
-        self.INFO = config['login']
-        self.DELAY = float(config['work']['DELAY'])
+        self.INFO = c_login
+        self.DELAY = float(c_work['DELAY'])
 
     def login(self):
         self.s = requests.Session()
@@ -65,9 +66,18 @@ class Requester(QObject):
                     while not self.is_ddos_checked:
                         time.sleep(0.2)
                     continue
-                else:
-                    return BeautifulSoup(r.text, 'html.parser')
+                else:  # 정상
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    if soup.title is None:
+                        print('서버가 봇 작동 감지. 재시도.')
+                        # with open('test.html', 'w', encoding='utf-8') as f:
+                        #     f.write(r.text)
+                        continue
+                    print(soup.title.text)
+                    return soup
             except requests.exceptions.Timeout:
+                self.sig_timeout.emit()
+                print('타임아웃 발생')
                 winsound.Beep(500, 50)
 
 
@@ -232,8 +242,8 @@ class ReqPost(ReqBasic):
                                 subs.append(rf'\g<b>[[{tmp_a}\g<c>\g<d>|{tmp_b}\g<f>\g<e>')
                                 # [[a|b|c]]인 경우
                                 comp.append(re.compile(
-                                    rf'\[\[{re.escape(tmp_a)}(?P<a>|#.*?)(?P<b>\|.*?)\|{re.escape(tmp_b)}\]\]'))
-                                subs.append(rf'[[{tmp_a}\g<a>\g<b>]]')
+                                    rf'\[\[{re.escape(tmp_a)}(?P<a>|#.*?)\|(?P<b>|.*?)(\|{re.escape(tmp_b)})?\]\]'))
+                                subs.append(rf'[[{tmp_a}\g<a>|\g<b>]]')
                             else:  # a -> b
                                 subs.append(rf'\g<b>[[{edit[5]}\g<c>\g<d>\g<f>\g<e>')
                                 # [[a|a]]인 경우
@@ -241,10 +251,11 @@ class ReqPost(ReqBasic):
                                     rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
                                 subs.append(rf'[[{edit[5]}\g<a>]]')
                         elif edit[4] == '지우기':
+                            # todo [[a|b]]일 때 b 남기기
                             comp.append(re.compile(
-                                rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
-                                rf'(\||(?P<f>\])|#)(.|\n)*?(?P<c>(?(a)|(?(b)\]\]|)))(?(f)\]|\]\])'))
-                            subs.append(r'\g<a>\g<c>')
+                                rf'(?P<m>\[\[(?P<n>.*?)\|)?\[\[{re.escape(edit[5])}'
+                                rf'(?P<a>#.*?)?(?P<b>\|)?(?(b)(?(m).*?|(?P<z>.*?)))\]\](?(m)\]\])'))
+                            subs.append(r'\g<n>\g<z>')
                     elif edit[3] == '포함':
                         if edit[4] == '찾기':
                             comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}(?P<after>.*?\)\])'))
