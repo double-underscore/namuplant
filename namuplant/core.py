@@ -233,29 +233,29 @@ class ReqPost(ReqBasic):
                     elif edit[3] == '링크':
                         if edit[4] == '찾기':
                             comp.append(re.compile(
-                                rf'(?P<b>(?P<a>\|\|)?(?(a)|\|))?\[\[{re.escape(edit[5])}'
-                                rf'((?P<c>\||#)|(?P<f>\]))(?P<d>(.|\n)*?)(?P<e>(?(a)|(?(b)\]\]|))(?(f)\]|\]\]))'))
+                                rf'(?P<front>\[\[(?P<w0>.*?)\|)?\[\[{re.escape(edit[5])}(?P<anc>#.*?)?(?P<bar>\|)?'
+                                rf'(?(bar)(?(front)(?P<w3>.*?)|(?P<w2>.*?))|)(?P<rear>\]\](?(front)\]\]))'))
                         elif edit[4] == '바꾸기':
                             if '|' in edit[5]:  # a -> a|b
                                 tmp_a = edit[5][:edit[5].find('|')]
                                 tmp_b = edit[5][edit[5].find('|') + 1:]
-                                subs.append(rf'\g<b>[[{tmp_a}\g<c>\g<d>|{tmp_b}\g<f>\g<e>')
+                                subs.append(rf'\g<front>[[{tmp_a}\g<anc>|{tmp_b}\g<bar>\g<w3>\g<w2>\g<rear>')
                                 # [[a|b|c]]인 경우
-                                comp.append(re.compile(
-                                    rf'\[\[{re.escape(tmp_a)}(?P<a>|#.*?)\|(?P<b>|.*?)(\|{re.escape(tmp_b)})?\]\]'))
-                                subs.append(rf'[[{tmp_a}\g<a>|\g<b>]]')
+                                comp.append(f'|{tmp_b}|')
+                                subs.append('|')
                             else:  # a -> b
-                                subs.append(rf'\g<b>[[{edit[5]}\g<c>\g<d>\g<f>\g<e>')
+                                subs.append(rf'\g<front>[[{edit[5]}\g<anc>\g<bar>\g<w3>\g<w2>\g<rear>')
                                 # [[a|a]]인 경우
                                 comp.append(re.compile(
                                     rf'\[\[{re.escape(edit[5])}(?P<a>|#.*?)\|{re.escape(edit[5])}\]\]'))
                                 subs.append(rf'[[{edit[5]}\g<a>]]')
                         elif edit[4] == '지우기':
-                            # todo [[a|b]]일 때 b 남기기
+                            comp.append(re.compile(rf'\[\[{re.escape(edit[5])}(#[^|]*?)?\]\]'))
+                            subs.append(edit[5])
                             comp.append(re.compile(
-                                rf'(?P<m>\[\[(?P<n>.*?)\|)?\[\[{re.escape(edit[5])}'
-                                rf'(?P<a>#.*?)?(?P<b>\|)?(?(b)(?(m).*?|(?P<z>.*?)))\]\](?(m)\]\])'))
-                            subs.append(r'\g<n>\g<z>')
+                                rf'(?P<front>(?P<lc>\[\[)(?P<w0>.*?)\|)?\[\[{re.escape(edit[5])}(?P<anc>#.*?)?(?P<bar>\|)?'
+                                rf'(?(bar)(?(front)(?P<w3>.*?)|(?P<w2>.*?))|)(?P<rear>\]\](?(front)(?P<rc>\]\])))'))
+                            subs.append(r'\g<lc>\g<w0>\g<w2>\g<rc>')
                     elif edit[3] == '포함':
                         if edit[4] == '찾기':
                             comp.append(re.compile(rf'\[(?i:include)\({re.escape(edit[5])}(?P<after>.*?\)\])'))
@@ -286,7 +286,9 @@ class ReqPost(ReqBasic):
                     try:
                         text = comp[i].sub(subs[i], text)
                     except re.error:
+                        print('error')
                         continue
+                    # print(f'{text}\n')
                 elif type(comp[i]) is bool:  # 대충 분류 삽입
                     cats = cat_p.findall(text)
                     if cats:
@@ -653,12 +655,14 @@ class ReqGet(ReqBasic):
         self.mode = 0  # 직접 입력
         self.code = ''
         self.doc_insert = doc_insert
+        self.total = 0
 
     def work(self):
         if self.mode == 1:  # 클릭 얻기
             self.code = self.copy_url()
         self.doc_insert.send(None)
         if self.code:  # 직접 입력은 외부에서 조달
+            self.total = 0
             if self.option == 0:  # 1개
                 code = self.get_one(self.code)
                 if code:
@@ -720,13 +724,12 @@ class ReqGet(ReqBasic):
     def get_one(self, doc_code):  # 존재여부 검사
         doc_name = parse.unquote(doc_code)
         if self.is_exist_read(self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}')):
-            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a> 문서를 목록에 추가했습니다.')
+            self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)} 문서를 목록에 추가했습니다.')
             return doc_code
         else:
-            self.sig_label_text.emit(f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a> 문서는 존재하지 않습니다.')
+            self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)} 문서는 존재하지 않습니다.')
 
     def get_backlink(self, doc_code):
-        total = 0
         doc_name = parse.unquote(doc_code)
         soup = self.requester.request_soup('get', f'{SITE_URL}/backlink/{doc_code}')
         for namespace in list(map(lambda x: parse.quote(x.get('value')), soup.select('select:nth-child(2) > option'))):
@@ -735,57 +738,68 @@ class ReqGet(ReqBasic):
                 if self.is_quit:
                     self.sig_label_text.emit(
                         f'정지 버튼을 눌러 중단되었습니다.<br>'
-                        f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 '
-                        f'<a href=\"{SITE_URL}/backlink/{doc_code}\">역링크</a> 문서를 {total}개 가져왔습니다.')
+                        f'{self.lnk_doc(doc_code, doc_name)}의 {self.lnk_blk(doc_code)} 문서를 {self.total}개 가져왔습니다.')
                     return
                 self.sig_label_text.emit(
-                    f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 역링크 '
+                    f'{self.lnk_doc(doc_code, doc_name)}의 역링크 '
                     f'<a href=\"{SITE_URL}/backlink/{doc_code}?namespace={namespace}\">{parse.unquote(namespace)}</a> '
-                    f'가져오는 중... ( + {total} )<br>{parse.unquote(tail[5:-1])}')
+                    f'가져오는 중... ( + {self.total} )<br>{parse.unquote(tail[5:-1])}')
                 soup = self.requester.request_soup('get',
                                                    f'{SITE_URL}/backlink/{doc_code}?{tail}namespace={namespace}&flag=0')
                 for v in soup.select('article > div > div > div > ul > li > a'):  # 표제어 목록
                     if not v.next_sibling[2:-1] == 'redirect':
                         yield v.get('href')[3:]
-                        total += 1
+                        self.total += 1
                 tail = soup.select('article > div > div > a')[3].get('href')  # 앞뒤 버튼 중 뒤 버튼
                 if not tail:  # 없으면 다음 스페이스로
                     break
                 else:
                     tail = tail[tail.find('?from=') + 1:tail.find('&') + 1]
                     # added = added[added.find('?from'):].replace('\'', '%27')
-        self.sig_label_text.emit(
-            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 '
-            f'<a href=\"{SITE_URL}/backlink/{doc_code}\">역링크</a> 문서를 {total}개 가져왔습니다.')
+        if self.total:
+            self.sig_label_text.emit(
+                f'{self.lnk_doc(doc_code, doc_name)}의 {self.lnk_blk(doc_code)} 문서를 {self.total}개 가져왔습니다.')
+        else:
+            self.sig_label_text.emit(
+                f'{self.lnk_doc(doc_code, doc_name)}의 {self.lnk_blk(doc_code)} 문서가 존재하지 않습니다.')
 
     def get_cat(self, doc_code):
-        total = 0
         doc_name = parse.unquote(doc_code)
         soup = self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}')
         spaces = soup.select('.cl')
         for i in range(len(spaces)):
             name = (lambda x: x[x.rfind(' ') + 1:])(spaces[i].select('h2')[0].text)
             self.sig_label_text.emit(
-                f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>의 하위 {name} 가져오는 중... ( + {total} )')
+                f'{self.lnk_doc(doc_code, doc_name)}의 하위 {name} 가져오는 중... ( + {self.total} )')
             for v in spaces[i].select('ul > li > a'):
                 yield v.get('href')[3:]
-                total += 1
+                self.total += 1
             if spaces[i].select('div > div > a'):  # 다음 버튼
                 tail = (lambda x: x[x.find('?namespace='):])(spaces[i].select('div > div > a')[1].get('href'))
                 while True:
                     if self.is_quit:
                         self.sig_label_text.emit(
                             f'정지 버튼을 눌러 중단되었습니다.<br>'
-                            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>에 분류된 문서를 {total}개 가져왔습니다.')
+                            f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서를 {self.total}개 가져왔습니다.')
                         return
                     else:
                         new_soup = self.requester.request_soup('get', f'{SITE_URL}/w/{doc_code}{tail}')
                         for v in new_soup.select('.cl')[i].select('ul > li > a'):
                             yield v.get('href')[3:]
-                            total += 1
+                            self.total += 1
                         tail = (lambda x: '' if x is None else x[x.find('?namespace='):])(
                             new_soup.select('.cl')[i].select('div > div > a')[1].get('href'))
                         if not tail:
                             break
-        self.sig_label_text.emit(
-            f'<a href=\"{SITE_URL}/w/{doc_code}\">{doc_name}</a>에 분류된 문서를 {total}개 가져왔습니다.')
+        if self.total:
+            self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서를 {self.total}개 가져왔습니다.')
+        else:
+            self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서가 없습니다.')
+    
+    @staticmethod
+    def lnk_doc(code, name):
+        return f'<a href=\"{SITE_URL}/w/{code}\">{name}</a>'
+
+    @staticmethod
+    def lnk_blk(code):
+        return f'<a href=\"{SITE_URL}/backlink/{code}\">역링크</a>'

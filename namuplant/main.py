@@ -366,6 +366,7 @@ class TabMacro(QWidget):
         box_v.setContentsMargins(2, 2, 2, 2)
         self.setLayout(box_v)
         # widget connect
+        self.doc_board.sig_main_label.connect(self.str_to_main)
         self.doc_board.table_doc.sig_main_label.connect(self.str_to_main)
         self.doc_board.table_doc.sig_doc_viewer.connect(self.micro_view)
         self.doc_board.cmb_option.currentIndexChanged.connect(self.btn_get_enable)
@@ -457,7 +458,6 @@ class TabMacro(QWidget):
             self.btn_pause.setEnabled(True)
             self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
-
     @Slot()
     def get_finish(self):
         self.th_get.quit()
@@ -469,7 +469,7 @@ class TabMacro(QWidget):
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
         self.btn_get.setEnabled(True)
-        if self.AUTO_INSERT:
+        if self.AUTO_INSERT and self.req_get.total:
             self.edit_editor.auto_add_edit(self.doc_board.cmb_option.currentText(), parse.unquote(self.req_get.code))
 
     @Slot()
@@ -795,6 +795,7 @@ class TableEdit(sub.TableEnhanced):
 
 class DocBoard(QWidget):
     sig_doc_code = Signal(str)
+    sig_main_label = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -830,11 +831,14 @@ class DocBoard(QWidget):
 
     @Slot()
     def insert(self):
-        if self.cmb_option.currentIndex() == 2:  # 분류:
-            self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+        if self.name_input.text():
+            if self.cmb_option.currentIndex() == 2:  # 분류:
+                self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+            else:
+                self.sig_doc_code.emit(parse.quote(self.name_input.text()))
+            self.name_input.clear()
         else:
-            self.sig_doc_code.emit(parse.quote(self.name_input.text()))
-        self.name_input.clear()
+            self.sig_main_label.emit('입력란이 비어있습니다.')
 
     @Slot()
     def invoke_insert_file(self):
@@ -1458,17 +1462,20 @@ class EditEditor(QWidget):
             self.cmb_doc_do.setCurrentText('바꾸기')
 
     def auto_add_edit(self, option, name):
-        if option == '역링크' or option == '분류:':
-            if self.table_edit.rowCount() == 0:
-                self.spin_1.setValue(1)
-            else:
-                ddd = self.table_edit.item(self.table_edit.rowCount() - 1, 0).text()
-                self.spin_1.setValue(int(ddd[ddd.rfind('_') + 1:]) + 1)
-            self.cmb_main.setCurrentText('문서')
-            self.cmb_doc.setCurrentText('수정')
-            self.cmb_doc_do.setCurrentText('찾기')
-            if option == '역링크':
-                self.cmb_doc_by.setCurrentText('링크')
-            elif option == '분류:':
-                self.cmb_doc_by.setCurrentText('분류:')
-            self.add_to_edit(alt=name)
+        if name.startswith('분류:'):
+            name = name[3:]
+        if name:
+            if option == '역링크' or option == '분류:':
+                if self.table_edit.rowCount() == 0:
+                    self.spin_1.setValue(1)
+                else:
+                    ddd = self.table_edit.item(self.table_edit.rowCount() - 1, 0).text()
+                    self.spin_1.setValue(int(ddd[ddd.rfind('_') + 1:]) + 1)
+                self.cmb_main.setCurrentText('문서')
+                self.cmb_doc.setCurrentText('수정')
+                self.cmb_doc_do.setCurrentText('찾기')
+                if option == '역링크':
+                    self.cmb_doc_by.setCurrentText('링크')
+                elif option == '분류:':
+                    self.cmb_doc_by.setCurrentText('분류:')
+                self.add_to_edit(alt=name)
