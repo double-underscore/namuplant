@@ -1405,12 +1405,19 @@ class EditEditor(QWidget):
         self.edit_input.setText(self.cmb_file_cat.itemText(i))
 
     def cmb_image(self):
-        soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
-        lic = [t.text for t in soup.select('#licenseSelect > option')]
-        lic.remove('선택')
-        lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
-        lic.insert(0, '')
-        cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
+        # a = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', r.text)
+        # a = re.findall(r'\"title\":\"(파일/.*?)\"', r.text)
+        source = self.requester.s.get(f'{core.SITE_URL}/Upload').text
+        lic = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', source)
+        cat = re.findall(r'\"title\":\"(파일/.*?)\"', source)
+
+        # soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
+        # lic = [t.text for t in soup.select('#licenseSelect > option')]
+        # lic.remove('선택')
+        # lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
+        # lic.insert(0, '')
+        # app > div > div:nth-child(2) > article > div > form > div:nth-child(7) > div
+        # cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
         return lic, cat
 
     @Slot()
