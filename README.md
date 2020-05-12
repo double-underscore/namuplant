@@ -5,7 +5,7 @@ by [double-underscore](https://github.com/double-underscore)
 
 ## 설치 및 설정
 1. 기본
-	1. Python 3.7.x. 설치  
+	1. Python 3.8.x. 설치  
 	    * 경로에 한글이 있으면 오류가 발생하므로 모든 사용자용으로 설치할 것.
 	2. 적절한 폴더에 프로젝트 클론  
 	    * 공유 폴더에 설치하면 ID와 비밀번호가 유출될 가능성이 있으므로 피할 것.
