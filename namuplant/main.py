@@ -60,6 +60,9 @@ class MainWindow(QMainWindow):
         act_config = QAction('개인정보', self)
         act_config.triggered.connect(self.action_config)
         # 실험 메뉴
+        self.act_skip_review = QAction('미리보기 스킵', self)
+        self.act_skip_review.setCheckable(True)
+        self.act_skip_review.toggled.connect(self.action_skip_review)
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
         act_test = QAction('test1', self)
@@ -77,7 +80,7 @@ class MainWindow(QMainWindow):
         menu_option.addSeparator()
         menu_option.addAction(act_config)
         menu_test = menu_bar.addMenu('테스트')
-        menu_test.addAction(act_memory)
+        menu_test.addActions([self.act_skip_review, act_memory])
         menu_test.addSeparator()
         menu_test.addActions([act_test, act_test2])
         # 메인 위젯 구동
@@ -99,6 +102,11 @@ class MainWindow(QMainWindow):
     def action_auto_ins(self, check):
         self.main_widget.tab_macro.AUTO_INSERT = int(check)
         self.main_widget.CONFIG['window']['AUTO_INS'] = int(check)
+        self.main_widget.save_config()
+
+    def action_skip_review(self, check):
+        self.main_widget.tab_macro.SKIP_REVIEW = int(check)
+        self.main_widget.CONFIG['window']['SKIP_REVIEW'] = int(check)
         self.main_widget.save_config()
 
     def action_config(self):
@@ -386,6 +394,7 @@ class TabMacro(QWidget):
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
         self.th_iterate = QThread()
+        self.SKIP_REVIEW = 0
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.sig_label_text.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
@@ -480,7 +489,7 @@ class TabMacro(QWidget):
         # self.iterate_post.doc_list = self.doc_board.table_doc.rows_text_copy_list()
         self.iterate_post.edit_dict = self.edit_editor.table_edit.edits_copy()
         self.iterate_post.index_speed = self.cmb_speed.currentIndex()
-        self.iterate_post.diff_done = 1
+        self.iterate_post.diff_done = 3 if self.SKIP_REVIEW else 1
         self.th_iterate.start()
 
     @Slot()
@@ -1061,9 +1070,9 @@ class DiffViewer(QWidget):
         # box: macro buttons
         box_macro = QHBoxLayout()
         box_macro.addWidget(self.btn_yes)
+        box_macro.addWidget(self.btn_no)
         box_macro.addWidget(self.btn_yes_group)
         box_macro.addWidget(self.btn_yes_whole)
-        box_macro.addWidget(self.btn_no)
         box_macro.addWidget(self.btn_quit)
         box_macro.setStretchFactor(self.btn_yes, 1)
         box_macro.setStretchFactor(self.btn_yes_group, 1)

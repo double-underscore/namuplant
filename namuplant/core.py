@@ -70,9 +70,9 @@ class Requester(QObject):
                     soup = BeautifulSoup(r.text, 'html.parser')
                     if soup.title is None:
                         print('서버가 봇 작동 감지. 재시도.')
-                        # with open('test.html', 'w', encoding='utf-8') as f:
-                        #     f.write(r.text)
                         continue
+                    # with open('test.html', 'w', encoding='utf-8') as f:
+                    #     f.write(r.text)
                     print(soup.title.text)
                     return soup
             except requests.exceptions.Timeout:
@@ -170,7 +170,7 @@ class ReqPost(ReqBasic):
 
     @staticmethod
     def is_captcha(soup):
-        if '"captcha":true' in soup.text:
+        if '"captcha":true' in soup.select("script")[1].contents[0]:
             return True  # 편집창 캡차 활성화됨
         else:
             return False
@@ -234,7 +234,7 @@ class ReqPost(ReqBasic):
                         if edit[4] == '찾기':
                             comp.append(re.compile(
                                 rf'(?P<front>\[\[(?P<w0>.*?)\|)?\[\[{re.escape(edit[5])}(?P<anc>#.*?)?(?P<bar>\|)?'
-                                rf'(?(bar)(?(front)(?P<w3>.*?)|(?P<w2>.*?))|)(?P<rear>\]\](?(front)\]\]))'))
+                                rf'(?(bar)(?(front)(?P<w3>.*?)|(?P<w2>.*?))|)(?P<rear>\]\].*?(?(front)\]\]))'))
                         elif edit[4] == '바꾸기':
                             if '|' in edit[5]:  # a -> a|b
                                 tmp_a = edit[5][:edit[5].find('|')]
@@ -279,6 +279,7 @@ class ReqPost(ReqBasic):
                         subs.append(edit[5])
             elif edit[1] == '요약':
                 summary = edit[5]
+        # print(comp, subs)
         while True:
             text = (yield text, summary)
             for i in range(len(comp)):
@@ -286,7 +287,10 @@ class ReqPost(ReqBasic):
                     try:
                         text = comp[i].sub(subs[i], text)
                     except re.error:
-                        print('error')
+                        print('regex error')
+                        continue
+                    except IndexError:
+                        print('edit index error')
                         continue
                     # print(f'{text}\n')
                 elif type(comp[i]) is bool:  # 대충 분류 삽입
@@ -380,10 +384,10 @@ class Iterate(ReqPost):
                     self.sig_label_text.emit('작업이 정지되었습니다.')
                     break
                 if self.doc_list[i][0][0] == '#':  # 편집 지시자
-                    if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                        self.sig_doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
-                        deleted += 1
-                        deleted_temp = 0
+                    # if i > 0 and i - edit_row - 1 == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                    #     self.sig_doc_remove.emit(edit_row - deleted)  # 더는 쓸모 없으니까 지시자 지움
+                    #     deleted += 1
+                    #     deleted_temp = 0
                     if self.diff_done == 2:  # 그룹 실행의 편집 그룹이 종료되어 초기화. 모두 실행(3)은 초기화 안 함
                         self.diff_done = 1
                     edit_row = i
@@ -430,13 +434,13 @@ class Iterate(ReqPost):
                             if waiting > 0:
                                 time.sleep(waiting)
                             t1 = time.time()
-                        if post_error:  # 에러 발생
+                        if post_error:  # 에러 발생시
                             self.sig_label_text.emit(f'{label}\n{post_error}')
                             self.sig_doc_error.emit(i - deleted, post_error)
-                        else:  # 정상
+                        else:  # 정상 처리시
                             self.sig_doc_remove.emit(i - deleted)
                             deleted += 1
-                            deleted_temp += 1
+                            # deleted_temp += 1
                         if self.diff_done == 5:
                             self.sig_label_text.emit('편집 비교 중 작업을 중단하였습니다.')
                             break
@@ -444,8 +448,8 @@ class Iterate(ReqPost):
                         self.sig_label_text.emit('첫 행에 편집 사항이 지정되어있지 않습니다.')
                         break
                 if i == len(self.doc_list) - 1:  # 마지막 행
-                    if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
-                        self.sig_doc_remove.emit(edit_row)  # 더는 쓸모 없으니까 지시자 지움
+                    # if i - edit_row == deleted_temp:  # 해당 지시자 쓰는 문서 편집 모두 성공하면
+                    #     self.sig_doc_remove.emit(edit_row)  # 더는 쓸모 없으니까 지시자 지움
                     self.sig_label_text.emit('작업이 모두 완료되었습니다.')
             doc_logger.close()
             edit_logger.close()
