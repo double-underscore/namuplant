@@ -51,12 +51,18 @@ class MainWindow(QMainWindow):
         act_name_edit = QAction('이미지 표제어 변경', self)
         act_name_edit.triggered.connect(self.action_name_edit)
         # 설정 메뉴
-        act_on_top = QAction('항상 위', self)
-        act_on_top.setCheckable(True)
-        act_on_top.toggled.connect(self.action_on_top)
+        self.act_on_top = QAction('항상 위', self)
+        self.act_on_top.setCheckable(True)
+        self.act_on_top.toggled.connect(self.action_on_top)
+        self.act_auto_ins = QAction('편집사항 자동 추가', self)
+        self.act_auto_ins.setCheckable(True)
+        self.act_auto_ins.toggled.connect(self.action_auto_ins)
         act_config = QAction('개인정보', self)
         act_config.triggered.connect(self.action_config)
         # 실험 메뉴
+        self.act_skip_review = QAction('미리보기 스킵', self)
+        self.act_skip_review.setCheckable(True)
+        self.act_skip_review.toggled.connect(self.action_skip_review)
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
         act_test = QAction('test1', self)
@@ -70,11 +76,11 @@ class MainWindow(QMainWindow):
         menu_file.addSeparator()
         menu_file.addActions([act_name_edit])
         menu_option = menu_bar.addMenu('설정')
-        menu_option.addAction(act_on_top)
+        menu_option.addActions([self.act_on_top, self.act_auto_ins])
         menu_option.addSeparator()
         menu_option.addAction(act_config)
         menu_test = menu_bar.addMenu('테스트')
-        menu_test.addAction(act_memory)
+        menu_test.addActions([self.act_skip_review, act_memory])
         menu_test.addSeparator()
         menu_test.addActions([act_test, act_test2])
         # 메인 위젯 구동
@@ -83,10 +89,73 @@ class MainWindow(QMainWindow):
         # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')
+        # 기타 옵션
+        self.act_on_top.setChecked(int(self.main_widget.CONFIG['window']['ON_TOP']))
+        self.act_auto_ins.setChecked(int(self.main_widget.CONFIG['window']['AUTO_INS']))
+
+    def action_on_top(self, check):
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, check)
+        self.main_widget.CONFIG['window']['ON_TOP'] = int(check)
+        self.main_widget.save_config()
+        self.show()
+
+    def action_auto_ins(self, check):
+        self.main_widget.tab_macro.AUTO_INSERT = int(check)
+        self.main_widget.CONFIG['window']['AUTO_INS'] = int(check)
+        self.main_widget.save_config()
+
+    def action_skip_review(self, check):
+        self.main_widget.tab_macro.SKIP_REVIEW = int(check)
+        self.main_widget.CONFIG['window']['SKIP_REVIEW'] = int(check)
+        self.main_widget.save_config()
+
+    def action_config(self):
+        self.main_widget.show_config_dialog()
+
+    def action_name_edit(self):
+        self.main_widget.show_name_edit_dialog()
+
+    def action_memory(self):
+        self.main_widget.set_main_label(f'메모리 사용량: {round(process.memory_info().rss / 1024 / 1024, 2)}MB')
+
+    def action_load_doc_list(self):
+        self.load_list('doc')
+
+    def action_load_edit_list(self):
+        self.load_list('edit')
+
+    def action_save_doc_list(self):
+        self.save_list('doc')
+
+    def action_save_edit_list(self):
+        self.save_list('edit')
+
+    def action_test(self):
+        t1 = time.time()
+        # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
+        # print(process.memory_info().rss / 1024 / 1024)
+        # self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
+        # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
+        # self.main_widget.ddos_dialog.show()
+        # self.main_widget.tab_macro.btn_get.setEnabled(False)
+        # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
+        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
+        # print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
+        # self.main_widget.tab_macro.tabs_viewer.doc_viewer.viewer.find("원소")
+        # self.main_widget.tab_macro.doc_board.table_doc.dedupl()
+        print(time.time() - t1)
+        pass
+
+    def action_test2(self):
+        # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
+        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
+        # self.main_widget.tab_macro.doc_board.table_doc.edit_file_name
+        pass
 
     def closeEvent(self, event):
         self.write_list_csv('doc', 'doc_list.csv')
         self.write_list_csv('edit', 'edit_list.csv')
+        self.main_widget.save_config()
 
     def read_list_csv(self, mode_1: str, file_dir, index=None):
         t_m = self.main_widget.tab_macro
@@ -127,53 +196,6 @@ class MainWindow(QMainWindow):
             wc.send(dict(zip(cols, [row[i] for i in range(len(row))])))  # 핵심
         wc.close()
 
-    def action_on_top(self, check):
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, check)
-        self.show()
-
-    def action_config(self):
-        self.main_widget.show_config_dialog()
-
-    def action_name_edit(self):
-        self.main_widget.show_name_edit_dialog()
-
-    def action_test(self):
-        t1 = time.time()
-        # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
-        # print(process.memory_info().rss / 1024 / 1024)
-        # self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
-        # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
-        # self.main_widget.ddos_dialog.show()
-        # self.main_widget.tab_macro.btn_get.setEnabled(False)
-        # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
-        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
-        # print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
-        # self.main_widget.tab_macro.tabs_viewer.doc_viewer.viewer.find("원소")
-        # self.main_widget.tab_macro.doc_board.table_doc.dedupl()
-        print(time.time() - t1)
-        pass
-
-    def action_test2(self):
-        # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
-        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
-        # self.main_widget.tab_macro.doc_board.table_doc.edit_file_name
-        pass
-
-    def action_memory(self):
-        self.main_widget.set_main_label(f'메모리 사용량: {round(process.memory_info().rss / 1024 / 1024, 2)}MB')
-
-    def action_load_doc_list(self):
-        self.load_list('doc')
-
-    def action_load_edit_list(self):
-        self.load_list('edit')
-
-    def action_save_doc_list(self):
-        self.save_list('doc')
-
-    def action_save_edit_list(self):
-        self.save_list('edit')
-
     def load_list(self, mode):
         name = {'doc': '문서', 'edit': '편집사항'}[mode]
         file_dir = QFileDialog.getOpenFileName(self, f'{name} 목록 불러오기', './', 'CSV 파일(*.csv)')[0]
@@ -203,10 +225,7 @@ class MainWindow(QMainWindow):
 class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
-        # dialogs
-        self.config_dialog = sub.ConfigDialog()
-        self.ddos_dialog = sub.DDOSDialog()
-        self.name_edit_dialog = sub.NameEditDialog()
+        self.CONFIG = storage.read_config('config.ini')
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
@@ -215,11 +234,17 @@ class MainWidget(QWidget):
         self.main_label.setWordWrap(True)
         self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         self.main_label.setOpenExternalLinks(True)
+        # dialogs
+        self.config_dialog = sub.ConfigDialog()
+        self.config_dialog.load(self.CONFIG['login'], self.CONFIG['work'])
+        self.ddos_dialog = sub.DDOSDialog()
+        self.name_edit_dialog = sub.NameEditDialog()
         #
         self.tab_macro = TabMacro()
         self.tab_macro.sig_main_label.connect(self.set_main_label)
         self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
         self.tab_macro.requester.sig_check_ddos.connect(self.show_ddos_dialog)
+        self.tab_macro.requester.sig_timeout.connect(self.timeout_text)
         self.login_confirm()
 
         box_v = QVBoxLayout()
@@ -235,7 +260,7 @@ class MainWidget(QWidget):
         self.main_label.setText(t)
 
     def login_confirm(self):
-        self.tab_macro.requester.load_config(self.config_dialog.config)
+        self.tab_macro.requester.load_config(self.CONFIG['login'], self.CONFIG['work'])
         if self.tab_macro.requester.login():
             self.tab_macro.setEnabled(True)
             self.set_main_label(f'namuplant {__version__}')
@@ -254,13 +279,23 @@ class MainWidget(QWidget):
             obj.is_ddos_checked = True
 
     def show_config_dialog(self):
-        self.config_dialog.config_show_text()
+        self.config_dialog.show_config()
         ddd = self.config_dialog.exec_()
         if ddd == QDialog.Accepted:
+            self.CONFIG['login'] = self.config_dialog.c_login
+            self.CONFIG['work'] = self.config_dialog.c_work
+            self.save_config()
             self.login_confirm()
 
     def show_name_edit_dialog(self):
         self.name_edit_dialog.show()
+
+    def timeout_text(self):
+        self.set_main_label('timeout!!!')
+        print('timeout')
+
+    def save_config(self):
+        storage.write_config('config.ini', self.CONFIG)
 
 
 class TabMacro(QWidget):
@@ -339,6 +374,7 @@ class TabMacro(QWidget):
         box_v.setContentsMargins(2, 2, 2, 2)
         self.setLayout(box_v)
         # widget connect
+        self.doc_board.sig_main_label.connect(self.str_to_main)
         self.doc_board.table_doc.sig_main_label.connect(self.str_to_main)
         self.doc_board.table_doc.sig_doc_viewer.connect(self.micro_view)
         self.doc_board.cmb_option.currentIndexChanged.connect(self.btn_get_enable)
@@ -349,7 +385,7 @@ class TabMacro(QWidget):
         # thread get_click
         mouse.on_right_click(self.get_start)
         self.th_get = QThread()
-
+        self.AUTO_INSERT = 0
         self.req_get.finished.connect(self.get_finish)
         self.req_get.sig_label_text.connect(self.str_to_main)
         # self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
@@ -358,6 +394,7 @@ class TabMacro(QWidget):
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
         self.th_iterate = QThread()
+        self.SKIP_REVIEW = 0
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.sig_label_text.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
@@ -430,7 +467,6 @@ class TabMacro(QWidget):
             self.btn_pause.setEnabled(True)
             self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
-
     @Slot()
     def get_finish(self):
         self.th_get.quit()
@@ -442,6 +478,8 @@ class TabMacro(QWidget):
         self.btn_do.setEnabled(True)
         self.btn_pause.setEnabled(False)
         self.btn_get.setEnabled(True)
+        if self.AUTO_INSERT and self.req_get.total:
+            self.edit_editor.auto_add_edit(self.doc_board.cmb_option.currentText(), parse.unquote(self.req_get.code))
 
     @Slot()
     def iterate_start(self):
@@ -451,7 +489,7 @@ class TabMacro(QWidget):
         # self.iterate_post.doc_list = self.doc_board.table_doc.rows_text_copy_list()
         self.iterate_post.edit_dict = self.edit_editor.table_edit.edits_copy()
         self.iterate_post.index_speed = self.cmb_speed.currentIndex()
-        self.iterate_post.diff_done = 1
+        self.iterate_post.diff_done = 3 if self.SKIP_REVIEW else 1
         self.th_iterate.start()
 
     @Slot()
@@ -766,6 +804,7 @@ class TableEdit(sub.TableEnhanced):
 
 class DocBoard(QWidget):
     sig_doc_code = Signal(str)
+    sig_main_label = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -801,11 +840,14 @@ class DocBoard(QWidget):
 
     @Slot()
     def insert(self):
-        if self.cmb_option.currentIndex() == 2:  # 분류:
-            self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+        if self.name_input.text():
+            if self.cmb_option.currentIndex() == 2:  # 분류:
+                self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+            else:
+                self.sig_doc_code.emit(parse.quote(self.name_input.text()))
+            self.name_input.clear()
         else:
-            self.sig_doc_code.emit(parse.quote(self.name_input.text()))
-        self.name_input.clear()
+            self.sig_main_label.emit('입력란이 비어있습니다.')
 
     @Slot()
     def invoke_insert_file(self):
@@ -1028,9 +1070,9 @@ class DiffViewer(QWidget):
         # box: macro buttons
         box_macro = QHBoxLayout()
         box_macro.addWidget(self.btn_yes)
+        box_macro.addWidget(self.btn_no)
         box_macro.addWidget(self.btn_yes_group)
         box_macro.addWidget(self.btn_yes_whole)
-        box_macro.addWidget(self.btn_no)
         box_macro.addWidget(self.btn_quit)
         box_macro.setStretchFactor(self.btn_yes, 1)
         box_macro.setStretchFactor(self.btn_yes_group, 1)
@@ -1238,7 +1280,7 @@ class EditEditor(QWidget):
         self.cmb_doc_by = QComboBox()
         self.cmb_doc_by.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_doc_by.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
-        self.cmb_doc_by.addItems(['텍스트', '정규식', '분류:', '링크', '포함'])
+        self.cmb_doc_by.addItems(['텍스트', '정규식', '링크', '포함', '분류:'])
         self.cmb_doc_do = QComboBox()
         self.cmb_doc_do.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_doc_do.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
@@ -1372,16 +1414,23 @@ class EditEditor(QWidget):
         self.edit_input.setText(self.cmb_file_cat.itemText(i))
 
     def cmb_image(self):
-        soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
-        lic = [t.text for t in soup.select('#licenseSelect > option')]
-        lic.remove('선택')
-        lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
-        lic.insert(0, '')
-        cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
+        # a = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', r.text)
+        # a = re.findall(r'\"title\":\"(파일/.*?)\"', r.text)
+        source = self.requester.s.get(f'{core.SITE_URL}/Upload').text
+        lic = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', source)
+        cat = re.findall(r'\"title\":\"(파일/.*?)\"', source)
+
+        # soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
+        # lic = [t.text for t in soup.select('#licenseSelect > option')]
+        # lic.remove('선택')
+        # lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
+        # lic.insert(0, '')
+        # app > div > div:nth-child(2) > article > div > form > div:nth-child(7) > div
+        # cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
         return lic, cat
 
     @Slot()
-    def add_to_edit(self):
+    def add_to_edit(self, alt=''):
         # 값 추출
         opt1 = self.cmb_main.currentText()
         if opt1 == '문서':
@@ -1407,7 +1456,9 @@ class EditEditor(QWidget):
             opt2, opt3 = '', ''
             opt4 = self.cmb_revert.currentText()
         # 스트링 예외
-        if opt4 == '로그':
+        if alt:
+            string = alt
+        elif opt4 == '로그':
             string = ''
         else:
             string = self.edit_input.text()
@@ -1425,3 +1476,22 @@ class EditEditor(QWidget):
             self.cmb_doc_do.setCurrentText('찾기')
         elif opt4 == '찾기':
             self.cmb_doc_do.setCurrentText('바꾸기')
+
+    def auto_add_edit(self, option, name):
+        if name.startswith('분류:'):
+            name = name[3:]
+        if name:
+            if option == '역링크' or option == '분류:':
+                if self.table_edit.rowCount() == 0:
+                    self.spin_1.setValue(1)
+                else:
+                    ddd = self.table_edit.item(self.table_edit.rowCount() - 1, 0).text()
+                    self.spin_1.setValue(int(ddd[ddd.rfind('_') + 1:]) + 1)
+                self.cmb_main.setCurrentText('문서')
+                self.cmb_doc.setCurrentText('수정')
+                self.cmb_doc_do.setCurrentText('찾기')
+                if option == '역링크':
+                    self.cmb_doc_by.setCurrentText('링크')
+                elif option == '분류:':
+                    self.cmb_doc_by.setCurrentText('분류:')
+                self.add_to_edit(alt=name)

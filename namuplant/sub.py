@@ -92,7 +92,7 @@ class ConfigDialog(QDialog):
         self.line_delay.setSuffix('초')
         self.line_delay.setSingleStep(0.1)
         self.btn_save = QPushButton('저장')
-        self.btn_save.clicked.connect(self.config_save)
+        self.btn_save.clicked.connect(self.save)
         self.btn_cancel = QPushButton('취소')
         self.btn_cancel.clicked.connect(self.reject)
         grid = QGridLayout()
@@ -112,24 +112,26 @@ class ConfigDialog(QDialog):
         self.setWindowTitle('개인 정보')
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
         self.resize(400, 160)
+        self.c_login, self.c_work = {}, {}
 
-        self.config = storage.read_config('config.ini')
-
-    def config_show_text(self):
-        self.line_id.setText(self.config['login']['ID'])
-        self.line_pw.setText(self.config['login']['PW'])
-        self.line_umi.setText(self.config['login']['UMI'])
-        self.line_ua.setText(self.config['login']['UA'])
+    def show_config(self):
+        self.line_id.setText(self.c_login['ID'])
+        self.line_pw.setText(self.c_login['PW'])
+        self.line_umi.setText(self.c_login['UMI'])
+        self.line_ua.setText(self.c_login['UA'])
         self.line_ua.setCursorPosition(0)
-        self.line_delay.setValue(float(self.config['work']['DELAY']))
+        self.line_delay.setValue(float(self.c_work['DELAY']))
 
-    def config_save(self):
-        self.config = {'login': {'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
-                                 'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()},
-                       'work': {'DELAY': self.line_delay.value()}}
-        storage.write_config('config.ini', self.config)
+    def load(self, c_login, c_work):
+        self.c_login = c_login
+        self.c_work = c_work
+
+    def save(self):
+        self.c_login = {'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
+                        'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()}
+        self.c_work = {'DELAY': self.line_delay.value()}
         self.accept()
 
 
