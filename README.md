@@ -3,8 +3,14 @@ A bot for namu.wiki
 
 by [double-underscore](https://github.com/double-underscore)
 
+## 기능
+* 리캡차를 요구하지 않는 모든 활동
+    * 편집
+        * 편집 요청 불가
+    * 복구
+    * 이미지 업로드
 ## 설치 및 설정
-1. 기본
+1. 기본 설정
 	1. Python 3.8.x. 설치  
 	    * 경로에 한글이 있으면 오류가 발생하므로 모든 사용자용으로 설치할 것.
 	2. 적절한 폴더에 프로젝트 클론  
@@ -12,8 +18,8 @@ by [double-underscore](https://github.com/double-underscore)
 	3. `requirements.txt`를 이용해 패키지 설치
 		* 윈도우 탐색기에서 클론한 폴더에 들어간 다음 shift + 오른쪽 클릭 - 여기에서 PowerShell 열기
 	    * `pip install -r requirements.txt`
-	4. `run.py`(콘솔有) 또는 `run.pyw`(콘솔無) 실행
-2. 로그인
+2. `run.py`(콘솔有) 또는 `run.pyw`(콘솔無) 실행
+3. 로그인
 	1. `설정 - 개인정보` 열기
 	2. ID & 비밀번호 입력  
 	    * `config.ini` 파일에 저장되므로 개인정보 유출 조심할 것.
