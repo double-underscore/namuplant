@@ -59,12 +59,12 @@ class MainWindow(QMainWindow):
         self.act_auto_ins.toggled.connect(self.action_auto_ins)
         act_config = QAction('개인정보', self)
         act_config.triggered.connect(self.action_config)
+        act_memory = QAction('RAM', self)
+        act_memory.triggered.connect(self.action_memory)
         # 실험 메뉴
         self.act_skip_review = QAction('미리보기 스킵', self)
         self.act_skip_review.setCheckable(True)
         self.act_skip_review.toggled.connect(self.action_skip_review)
-        act_memory = QAction('RAM', self)
-        act_memory.triggered.connect(self.action_memory)
         act_test = QAction('test1', self)
         act_test.triggered.connect(self.action_test)
         act_test2 = QAction('test2', self)
@@ -78,11 +78,11 @@ class MainWindow(QMainWindow):
         menu_option = menu_bar.addMenu('설정')
         menu_option.addActions([self.act_on_top, self.act_auto_ins])
         menu_option.addSeparator()
-        menu_option.addAction(act_config)
-        menu_test = menu_bar.addMenu('테스트')
-        menu_test.addActions([self.act_skip_review, act_memory])
-        menu_test.addSeparator()
-        menu_test.addActions([act_test, act_test2])
+        menu_option.addActions([act_config, act_memory])
+        # menu_test = menu_bar.addMenu('테스트')
+        # menu_test.addAction(self.act_skip_review)
+        # menu_test.addSeparator()
+        # menu_test.addActions([act_test, act_test2])
         # 메인 위젯 구동
         self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
@@ -131,25 +131,11 @@ class MainWindow(QMainWindow):
         self.save_list('edit')
 
     def action_test(self):
-        t1 = time.time()
-        # print('th_micro: ', self.main_widget.tab_macro.th_micro.isRunning())
-        # print(process.memory_info().rss / 1024 / 1024)
-        # self.main_widget.ddos_dialog.browser.load(QUrl('https://www.google.com/recaptcha/api2/demo'))
-        # self.main_widget.ddos_dialog.browser.setHtml("<html><head></head><body><h1>정말 잘하셨어요</h1></body></html>")
-        # self.main_widget.ddos_dialog.show()
-        # self.main_widget.tab_macro.btn_get.setEnabled(False)
-        # self.main_widget.tab_macro.doc_board.table_doc.setRowCount(0)
-        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(0))
-        # print(self.main_widget.tab_macro.micro_post.INFO, self.main_widget.tab_macro.micro_post.DELAY)
-        # self.main_widget.tab_macro.tabs_viewer.doc_viewer.viewer.find("원소")
-        # self.main_widget.tab_macro.doc_board.table_doc.dedupl()
-        print(time.time() - t1)
+        # t1 = time.time()
+        # print(time.time() - t1)
         pass
 
     def action_test2(self):
-        # self.main_widget.tab_macro.doc_board.table_doc.clearContents()
-        # print(self.main_widget.tab_macro.edit_editor.table_edit.edits_copy(3))
-        # self.main_widget.tab_macro.doc_board.table_doc.edit_file_name
         pass
 
     def closeEvent(self, event):
@@ -433,7 +419,7 @@ class TabMacro(QWidget):
 
     @Slot(int)
     def btn_get_enable(self, i):
-        if i == 3:
+        if i == 4:
             self.btn_get.setEnabled(False)
         else:
             self.btn_get.setEnabled(True)
@@ -818,7 +804,7 @@ class DocBoard(QWidget):
                 color: white;}
             """)
         self.cmb_option = QComboBox(self)
-        self.cmb_option.addItems(['1개', '역링크', '분류:', '이미지'])
+        self.cmb_option.addItems(['1개', '역링크', '분류:', '사용자:', '이미지'])
         self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_option.currentIndexChanged.connect(self.cmb_option_change)
         # self.name_input = QLineEdit()
@@ -851,12 +837,12 @@ class DocBoard(QWidget):
 
     @Slot()
     def invoke_insert_file(self):
-        if self.cmb_option.currentIndex() == 3:
+        if self.cmb_option.currentIndex() == 4:
             self.insert_file()
 
     @Slot(int)
     def cmb_option_change(self, i):
-        if i == 3:
+        if i == 4:
             self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
         else:
             self.name_input.setPlaceholderText('입력하여 문서 추가')
@@ -1299,7 +1285,6 @@ class EditEditor(QWidget):
         self.cmb_file_desc.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_file_desc.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
         self.cmb_file_desc.addItems(['설명', '출처', '날짜', '저작자', '기타'])
-
         lic, cat = self.cmb_image()
         self.cmb_file_lic = QComboBox()
         self.cmb_file_lic.setStyleSheet('font: 10pt \'맑은 고딕\'')
@@ -1319,7 +1304,17 @@ class EditEditor(QWidget):
         self.cmb_revert = QComboBox()
         self.cmb_revert.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_revert.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
-        self.cmb_revert.addItems(['로그', '지정'])
+        self.cmb_revert.addItems(['직전', '지정'])
+        self.cmb_revert.currentTextChanged.connect(self.cmb_revert_change)
+        self.cmb_revert_before = QComboBox()
+        self.cmb_revert_before.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_revert_before.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
+        self.cmb_revert_before.addItems(['현재', '마지막', '처음'])
+        self.cmb_revert_to = QComboBox()
+        self.cmb_revert_to.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.cmb_revert_to.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
+        self.cmb_revert_to.addItems(['로그', '입력'])
+
         # space
         self.lbl_2 = QLabel()
         self.lbl_3 = QLabel()
@@ -1332,13 +1327,15 @@ class EditEditor(QWidget):
         box_edit_combos.addWidget(self.lbl_3)  # 3
         box_edit_combos.addWidget(self.cmb_doc_by)  # 3
         box_edit_combos.addWidget(self.cmb_file)  # 3
+        box_edit_combos.addWidget(self.cmb_revert)  # 3
         box_edit_combos.addWidget(self.lbl_4)  # 4
         box_edit_combos.addWidget(self.cmb_doc_do)  # 4
         box_edit_combos.addWidget(self.cmb_doc_insert)  # 4
         box_edit_combos.addWidget(self.cmb_file_desc)  # 4
         box_edit_combos.addWidget(self.cmb_file_lic)  # 4
         box_edit_combos.addWidget(self.cmb_file_cat)  # 4
-        box_edit_combos.addWidget(self.cmb_revert)  # 4
+        box_edit_combos.addWidget(self.cmb_revert_before)  # 4
+        box_edit_combos.addWidget(self.cmb_revert_to)  # 4
 
         box_edit_combos.setStretchFactor(self.spin_1, 1)
         box_edit_combos.setStretchFactor(self.cmb_main, 1)
@@ -1351,6 +1348,8 @@ class EditEditor(QWidget):
         box_edit_combos.setStretchFactor(self.cmb_file_lic, 1)
         box_edit_combos.setStretchFactor(self.cmb_file_cat, 1)
         box_edit_combos.setStretchFactor(self.cmb_revert, 1)
+        box_edit_combos.setStretchFactor(self.cmb_revert_before, 1)
+        box_edit_combos.setStretchFactor(self.cmb_revert_to, 1)
         box_edit_combos.setStretchFactor(self.lbl_2, 1)
         box_edit_combos.setStretchFactor(self.lbl_3, 1)
         box_edit_combos.setStretchFactor(self.lbl_4, 1)
@@ -1367,10 +1366,11 @@ class EditEditor(QWidget):
         box_edit.setSpacing(6)
         self.setLayout(box_edit)
         
-    def show_cmb(self, visible):
+    def show_cmb(self, visible):  # True 보이기 False 감추기 None 냅두기
         cmbs = (self.cmb_doc, self.cmb_doc_by, self.cmb_doc_do, self.cmb_doc_insert,
                 self.cmb_file, self.cmb_file_desc, self.cmb_file_lic, self.cmb_file_cat,
-                self.cmb_revert, self.lbl_2, self.lbl_3, self.lbl_4)
+                self.cmb_revert, self.cmb_revert_before, self.cmb_revert_to,
+                self.lbl_2, self.lbl_3, self.lbl_4)
         for i in range(len(cmbs)):
             if visible[i] is not None:
                 cmbs[i].setVisible(visible[i])
@@ -1378,32 +1378,39 @@ class EditEditor(QWidget):
     @Slot(str)
     def cmb_main_change(self, t):
         if t == '문서':
-            self.show_cmb([True, True, True, False, False, False, False, False, False, False, False, False])
+            self.show_cmb([True, True, True, False, False, False, False, False, False, False, False, False, False, False])
             self.cmb_doc_change(self.cmb_doc.currentText())
         elif t == '파일':
-            self.show_cmb([False, False, False, False, True, True, False, False, False, True, False, False])
+            self.show_cmb([False, False, False, False, True, True, False, False, False, False, False, True, False, False])
             self.cmb_file_change(self.cmb_file.currentText())
         elif t == '요약':
-            self.show_cmb([False, False, False, False, False, False, False, False, False, True, True, True])
+            self.show_cmb([False, False, False, False, False, False, False, False, False, False, False, True, True, True])
         elif t == '복구':
-            self.show_cmb([False, False, False, False, False, False, False, False, True, True, True, False])
+            self.show_cmb([False, False, False, False, False, False, False, False, True, True, False, True, False, False])
 
     @Slot(str)
     def cmb_doc_change(self, t):
         if t == '수정':
-            self.show_cmb([None, True, True, False, None, None, None, None, None, None, False, None])
+            self.show_cmb([None, True, True, False, None, None, None, None, None, None, None, None, False, None])
         elif t == '삽입':
-            self.show_cmb([None, False, False, True, None, None, None, None, None, None, True, None])
+            self.show_cmb([None, False, False, True, None, None, None, None, None, None, None, None, True, None])
 
     @Slot(str)
     def cmb_file_change(self, t):
         if t == '본문':
-            self.show_cmb([None, None, None, None, None, True, False, False, None, True, None, None])
+            self.show_cmb([None, None, None, None, None, True, False, False, None, None, None, True, None, None])
         elif t == '라이선스':
-            self.show_cmb([None, None, None, None, None, False, True, False, None, True, None, None])
+            self.show_cmb([None, None, None, None, None, False, True, False, None, None, None, True, None, None])
         elif t == '분류:':
-            self.show_cmb([None, None, None, None, None, False, False, True, None, True, None, None])
+            self.show_cmb([None, None, None, None, None, False, False, True, None, None, None, True, None, None])
         self.edit_input.clear()
+
+    @Slot(str)
+    def cmb_revert_change(self, t):
+        if t == '직전':
+            self.show_cmb([None, None, None, None, None, None, None, None, None, True, False, True, None, None])
+        elif t == '지정':
+            self.show_cmb([None, None, None, None, None, None, None, None, None, False, True, True, None, None])
 
     @Slot(int)
     def cmb_file_lic_change(self, i):
@@ -1414,25 +1421,20 @@ class EditEditor(QWidget):
         self.edit_input.setText(self.cmb_file_cat.itemText(i))
 
     def cmb_image(self):
-        # a = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', r.text)
-        # a = re.findall(r'\"title\":\"(파일/.*?)\"', r.text)
         source = self.requester.s.get(f'{core.SITE_URL}/Upload').text
         lic = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', source)
+        lic.insert(0, lic.pop(-1))
         cat = re.findall(r'\"title\":\"(파일/.*?)\"', source)
-
-        # soup = self.requester.request_soup('get', f'{core.SITE_URL}/Upload')
-        # lic = [t.text for t in soup.select('#licenseSelect > option')]
-        # lic.remove('선택')
-        # lic.insert(0, lic.pop(-1))  # 제한적 이용 맨 앞으로
-        # lic.insert(0, '')
-        # app > div > div:nth-child(2) > article > div > form > div:nth-child(7) > div
-        # cat = [t.attrs['value'][3:] for t in soup.select('#categorySelect > option')]
+        cat.remove('파일/미분류')
+        cat.insert(0, '파일/미분류')
         return lic, cat
 
     @Slot()
     def add_to_edit(self, alt=''):
+        string = self.edit_input.text()
         # 값 추출
         opt1 = self.cmb_main.currentText()
+        opt2, opt3, opt4 = '', '', ''
         if opt1 == '문서':
             opt2 = self.cmb_doc.currentText()
             if opt2 == '수정':
@@ -1447,21 +1449,27 @@ class EditEditor(QWidget):
             if opt3 == '본문':
                 opt4 = self.cmb_file_desc.currentText()
             elif opt3 == '라이선스':
+                if not string:
+                    string = self.cmb_file_lic.currentText()
                 opt4 = ''
             elif opt3 == '분류:':
+                if not string:
+                    string = self.cmb_file_cat.currentText()
                 opt4 = ''
         elif opt1 == '요약':
             opt2, opt3, opt4 = '', '', ''
         elif opt1 == '복구':
-            opt2, opt3 = '', ''
-            opt4 = self.cmb_revert.currentText()
+            opt2 = ''
+            opt3 = self.cmb_revert.currentText()
+            if opt3 == '직전':
+                opt4 = self.cmb_revert_before.currentText()
+            elif opt3 == '지정':
+                opt4 = self.cmb_revert_to.currentText()
         # 스트링 예외
         if alt:
             string = alt
-        elif opt4 == '로그':
+        elif opt4 == '로그' or opt4 == '현재':  # 복구 옵션 중 텍스트 입력칸 무시
             string = ''
-        else:
-            string = self.edit_input.text()
         insert = self.table_edit.rows_text_insert()
         insert.send(None)
         insert.send([str(self.spin_1.value()), opt1, opt2, opt3, opt4, string])

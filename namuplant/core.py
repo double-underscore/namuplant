@@ -474,17 +474,46 @@ class Iterate(ReqPost):
     def revert(self, doc_code, edit_list, rev_on_doc):
         rev, summary, error_log = '', '', ''
         for edit in edit_list:
+            rev = ''
             if edit[1] == '복구':
-                if edit[4] == '로그':
-                    if rev_on_doc[0] == 'r' and rev_on_doc[1:].isdigit():
-                        rev = rev_on_doc[1:]
-                else:  # '지정'
-                    rev = edit[5]
+                if edit[3] == '직전':
+                    soup = self.requester.request_soup('get', f'{SITE_URL}/history/{doc_code}')
+                    if edit[4] == '현재':
+                        href = soup.select_one('ul > li:nth-child(2) > span.t > a:nth-child(4)').get('href')
+                        rev = href[href.find('?rev=') + 5:]
+                    elif edit[4] == '마지막' or edit[4] == '처음':
+                        usernames = [v.text for v in soup.select('ul > li > div > div > a')]
+                        targets = [v.get('href')[v.get('href').find('?rev=') + 5:]
+                                   for v in soup.select('ul > li > span.t > a:nth-child(4)')]
+                        if edit[4] == '마지막':
+                            b = False
+                            for u, t in zip(usernames, targets):
+                                if b:
+                                    rev = t
+                                    break
+                                elif u == edit[5]:
+                                    b = True
+                        elif edit[4] == '처음':
+                            b = ''
+                            for u, t in zip(reversed(usernames), reversed(targets)):
+                                if u == edit[5]:
+                                    rev = b
+                                    break
+                                else:
+                                    b = t
+                elif edit[3] == '지정':
+                    if edit[4] == '로그':
+                        if rev_on_doc:
+                            if rev_on_doc[0] == 'r' and rev_on_doc[1:].isdigit():
+                                rev = rev_on_doc[1:]
+                    else:  # '입력'
+                        rev = edit[5]
             elif edit[1] == '요약':
                 summary = edit[5]
         if not rev:
-            error_log = '되돌릴 리비전이 지정되어 있지 않습니다.'
+            error_log = '되돌릴 리비전을 찾지 못했습니다.'
         else:
+            # print(rev)
             while True:
                 soup = self.requester.request_soup(
                     'post', f'{SITE_URL}/revert/{doc_code}',
@@ -664,6 +693,7 @@ class ReqGet(ReqBasic):
     def work(self):
         if self.mode == 1:  # 클릭 얻기
             self.code = self.copy_url()
+            # print(self.code)
         self.doc_insert.send(None)
         if self.code:  # 직접 입력은 외부에서 조달
             self.total = 0
@@ -681,7 +711,18 @@ class ReqGet(ReqBasic):
                 else:
                     self.sig_label_text.emit('해당 문서는 분류 문서가 아닙니다.')
                     winsound.Beep(500, 50)
-            elif self.option == 3:  # 파일
+            elif self.option == 3:  # 사용자 기여 목록
+                if self.mode == 1:
+                    # self.code = parse.unquote(self.code)
+                    if self.code.startswith(f'{parse.quote("사용자")}:'):
+                        self.code = self.code[self.code.rfind(':') + 1:]
+                    else:
+                        contrib = re.match(r'(ip|author)/(.*?)/document', self.code)
+                        if contrib:
+                            self.code = contrib.group(2)
+                for code in self.get_contrib(self.code):
+                    self.doc_insert.send([code, parse.unquote(code), ''])
+            elif self.option == 4:  # 파일
                 if self.mode == 1:
                     self.sig_label_text.emit('이미지 파일은 우클릭으로 추가할 수 없습니다.')
                     winsound.Beep(500, 50)
@@ -799,7 +840,41 @@ class ReqGet(ReqBasic):
             self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서를 {self.total}개 가져왔습니다.')
         else:
             self.sig_label_text.emit(f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서가 없습니다.')
-    
+
+    def get_contrib(self, user_name):
+        tail = ''
+        if re.match(r'^(?:25[0-5]|2[0-4]\d|[0-1]?\d{1,2})(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d{1,2})){3}$', user_name):
+            contrib_url = f'{SITE_URL}/contribution/ip/{user_name}/document'
+            lnk_user = f'{user_name}의 <a href=\"{contrib_url}\">기여 목록</a>'
+        else:
+            contrib_url = f'{SITE_URL}/contribution/author/{user_name}/document'
+            lnk_user = f'{self.lnk_doc(f"%EC%82%AC%EC%9A%A9%EC%9E%90:{user_name}", parse.unquote(user_name))}의 ' \
+                       f'<a href=\"{contrib_url}\">기여 목록</a>'
+        while True:
+            if self.is_quit:
+                self.sig_label_text.emit(
+                    f'정지 버튼을 눌러 중단되었습니다.<br>'
+                    f'{lnk_user}을 {self.total}개 가져왔습니다.')
+                return
+            self.sig_label_text.emit(
+                f'{lnk_user}을 가져오는 중... ( + {self.total} )')
+            soup = self.requester.request_soup('get', f'{contrib_url}{tail}')
+            temp = set()
+            for code in list(map(lambda x: x.get('href')[3:], soup.select('tr > td > a:nth-child(1)'))):
+                if code not in temp:
+                    temp.add(code)
+                    yield code
+                    self.total += 1
+            tail = soup.select('article > div > div > div > a')[1].get('href')  # 앞뒤 버튼 중 뒤 버튼
+            if not tail:
+                break
+            else:
+                tail = tail[tail.find('?from='):]
+        if self.total:
+            self.sig_label_text.emit(f'{lnk_user}을 {self.total}개 가져왔습니다.')
+        else:
+            self.sig_label_text.emit(f'{lnk_user}이 존재하지 않습니다.')
+
     @staticmethod
     def lnk_doc(code, name):
         return f'<a href=\"{SITE_URL}/w/{code}\">{name}</a>'
