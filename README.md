@@ -1,4 +1,6 @@
 # namuplant
+![icon](/namuplant/icon.png)
+
 A bot for namu.wiki
 
 by [double-underscore](https://github.com/double-underscore)
