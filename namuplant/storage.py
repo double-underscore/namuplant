@@ -8,9 +8,10 @@ EDIT_F = ['index', 'opt1', 'opt2', 'opt3', 'opt4', 'edit']
 
 def new_setting():
     if not os.path.isfile('config.ini'):  # 최초 생성
-        write_config('config.ini', {'login': {'ID': '', 'PW': '', 'UMI': '', 'UA': ''},
+        write_config('config.ini', {'login': {'ID': '', 'PW': '', 'UMI': '',
+                                              'UA': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36'},
                                     'work': {'DELAY': '3.0'},
-                                    'window': {'ON_TOP': 1, 'AUTO_INS': 1, 'SKIP_REVIEW': 0}})
+                                    'window': {'ON_TOP': 0, 'AUTO_INS': 1, 'SKIP_REVIEW': 0}})
     # new list log files
     for name, field in (('doc_list.csv', DOC_F), ('doc_log.csv', DOC_F),
                         ('edit_list.csv', EDIT_F), ('edit_log.csv', EDIT_F)):

@@ -1,7 +1,6 @@
 import os
 import re
 import time
-import winsound
 import psutil
 from urllib import parse
 import mouse
@@ -16,20 +15,6 @@ from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
 from . import core, sub, storage
 from .__init__ import __version__
 process = psutil.Process(os.getpid())
-
-
-def trace(func):
-    def wrapper(self, *args, **kwargs):
-        t1 = time.time()
-        print(func.__name__, '시행 전 메모리:', process.memory_info().rss / 1024 / 1024)
-        r = func(self, *args, **kwargs)
-        print(func.__name__, '시행 후 메모리:', process.memory_info().rss / 1024 / 1024,
-              '시행 소요 시간', time.time() - t1)
-        return r
-
-    return wrapper
-
-# todo 미러 사이트를 통한 목록 필터링
 
 
 class MainWindow(QMainWindow):
@@ -110,7 +95,7 @@ class MainWindow(QMainWindow):
         self.main_widget.save_config()
 
     def action_config(self):
-        self.main_widget.show_config_dialog()
+        self.main_widget.config_dialog.show_config()
 
     def action_name_edit(self):
         self.main_widget.show_name_edit_dialog()
@@ -215,23 +200,28 @@ class MainWidget(QWidget):
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
+        self.main_label.setMinimumHeight(40)
         self.main_label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.main_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.main_label.setWordWrap(True)
         self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         self.main_label.setOpenExternalLinks(True)
-        # dialogs
-        self.config_dialog = sub.ConfigDialog()
-        self.config_dialog.load(self.CONFIG['login'], self.CONFIG['work'])
-        self.ddos_dialog = sub.DDOSDialog()
-        self.name_edit_dialog = sub.NameEditDialog()
         #
         self.tab_macro = TabMacro()
         self.tab_macro.sig_main_label.connect(self.set_main_label)
-        self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
-        self.tab_macro.requester.sig_check_ddos.connect(self.show_ddos_dialog)
-        self.tab_macro.requester.sig_timeout.connect(self.timeout_text)
         self.login_confirm()
+        # dialogs
+        self.config_dialog = sub.ConfigDialog(self.tab_macro.requester)
+        self.config_dialog.load(self.CONFIG['login'], self.CONFIG['work'])
+        self.config_dialog.dialog_closed.connect(self.config_changed)
+
+        self.ddos_dialog = sub.DDOSDialog()
+        self.tab_macro.requester.ddos_detected.connect(self.ddos_dialog.show_ddos)
+        self.ddos_dialog.ddos_checked.connect(self.tab_macro.requester.ddos_checked)
+        self.tab_macro.requester.timeout_detected.connect(self.timeout_text)
+
+        self.name_edit_dialog = sub.NameEditDialog()
+        self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
 
         box_v = QVBoxLayout()
         box_v.addWidget(self.main_label)
@@ -257,21 +247,11 @@ class MainWidget(QWidget):
             self.set_main_label(
                 '주어진 정보로는 로그인 할 수 없습니다.\n메뉴의 \'설정-개인정보\'에서 로그인 정보를 입력하십시오.')
 
-    @Slot(object)
-    def show_ddos_dialog(self, obj):
-        self.ddos_dialog.browser.load(QUrl(f'{core.SITE_URL}/404'))
-        ddd = self.ddos_dialog.exec_()
-        if ddd == QDialog.Accepted:
-            obj.is_ddos_checked = True
-
-    def show_config_dialog(self):
-        self.config_dialog.show_config()
-        ddd = self.config_dialog.exec_()
-        if ddd == QDialog.Accepted:
-            self.CONFIG['login'] = self.config_dialog.c_login
-            self.CONFIG['work'] = self.config_dialog.c_work
-            self.save_config()
-            self.login_confirm()
+    @Slot(dict, dict)
+    def config_changed(self, c_login, c_work):
+        self.CONFIG['login'], self.CONFIG['work'] = c_login, c_work
+        self.save_config()
+        self.login_confirm()
 
     def show_name_edit_dialog(self):
         self.name_edit_dialog.show()
@@ -373,16 +353,16 @@ class TabMacro(QWidget):
         self.th_get = QThread()
         self.AUTO_INSERT = 0
         self.req_get.finished.connect(self.get_finish)
-        self.req_get.sig_label_text.connect(self.str_to_main)
+        self.req_get.label_shown.connect(self.str_to_main)
         # self.req_get.send_code_list.connect(self.doc_board.table_doc.receive_codes_get)
-        self.doc_board.sig_doc_code.connect(self.get_by_input)
+        self.doc_board.doc_code_typed.connect(self.get_by_input)
         self.req_get.moveToThread(self.th_get)
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
         self.th_iterate = QThread()
         self.SKIP_REVIEW = 0
         self.iterate_post.finished.connect(self.iterate_finish)
-        self.iterate_post.sig_label_text.connect(self.str_to_main)
+        self.iterate_post.label_shown.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
         self.iterate_post.sig_doc_set_current.connect(self.doc_board.table_doc.set_current)
         self.iterate_post.sig_doc_error.connect(self.doc_board.table_doc.set_error)
@@ -394,7 +374,7 @@ class TabMacro(QWidget):
         # thread micro
         self.th_micro = QThread()
         self.micro_post.finished.connect(self.micro_finish)
-        self.micro_post.sig_label_text.connect(self.str_to_main)
+        self.micro_post.label_shown.connect(self.str_to_main)
         self.micro_post.sig_text_view.connect(self.tabs_viewer.doc_viewer.set_text_view)
         self.micro_post.sig_text_edit.connect(self.tabs_viewer.doc_viewer.set_text_edit)
         self.micro_post.sig_image_view.connect(self.tabs_viewer.show_image)
@@ -789,7 +769,7 @@ class TableEdit(sub.TableEnhanced):
 
 
 class DocBoard(QWidget):
-    sig_doc_code = Signal(str)
+    doc_code_typed = Signal(str)
     sig_main_label = Signal(str)
 
     def __init__(self):
@@ -828,9 +808,9 @@ class DocBoard(QWidget):
     def insert(self):
         if self.name_input.text():
             if self.cmb_option.currentIndex() == 2:  # 분류:
-                self.sig_doc_code.emit(parse.quote(f'분류:{self.name_input.text()}'))
+                self.doc_code_typed.emit(parse.quote(f'분류:{self.name_input.text()}'))
             else:
-                self.sig_doc_code.emit(parse.quote(self.name_input.text()))
+                self.doc_code_typed.emit(parse.quote(self.name_input.text()))
             self.name_input.clear()
         else:
             self.sig_main_label.emit('입력란이 비어있습니다.')
@@ -1028,7 +1008,7 @@ class DocViewer(QWidget):
                     else:
                         self.viewer.moveCursor(QTextCursor.End)
                 elif i == 1:
-                    winsound.Beep(500, 50)
+                    pass
 
 
 class DiffViewer(QWidget):
@@ -1503,3 +1483,15 @@ class EditEditor(QWidget):
                 elif option == '분류:':
                     self.cmb_doc_by.setCurrentText('분류:')
                 self.add_to_edit(alt=name)
+
+
+def trace(func):
+    def wrapper(self, *args, **kwargs):
+        t1 = time.time()
+        print(func.__name__, '시행 전 메모리:', process.memory_info().rss / 1024 / 1024)
+        r = func(self, *args, **kwargs)
+        print(func.__name__, '시행 후 메모리:', process.memory_info().rss / 1024 / 1024,
+              '시행 소요 시간', time.time() - t1)
+        return r
+
+    return wrapper

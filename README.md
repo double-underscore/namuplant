@@ -25,11 +25,10 @@ by [double-underscore](https://github.com/double-underscore)
 	1. `설정 - 개인정보` 열기
 	2. ID & 비밀번호 입력  
 	    * `config.ini` 파일에 저장되므로 개인정보 유출 조심할 것.
-	3. umi 쿠키 입력  
-	    * umi 쿠키는 로그인 시 이메일 인증을 받으면 생성되는 쿠키로, `EditThisCookie`(크롬)처럼 쿠키를 확인할 수 있게 해주는 확장프로그램을 이용하여 확인.
-	4. User-Agents 입력  
-	    * [사이트](https://developers.whatismybrowser.com/useragents/parse/?analyse-my-user-agent=yes)에서 복사하여 입력.
-	5. 저장
+	    * `로그인` 클릭 - 이메일로 발송된 PIN 입력 - umi 쿠키 자동 입력.
+    3. User-Agents 입력  
+	    * 기본적으로 입력되어 있으나, [관련 사이트](https://developers.whatismybrowser.com/useragents/parse/?analyse-my-user-agent=yes)에서 복사하여 입력 가능.
+	4. 저장
 
 ## 사용법
 1. 문서 목록 입력

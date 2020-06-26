@@ -1,14 +1,17 @@
 from PySide2.QtWidgets import QDialog, QSizePolicy, QHBoxLayout, QVBoxLayout, QGridLayout, QShortcut
 from PySide2.QtWidgets import QPushButton, QLabel, QLineEdit, QComboBox, QDoubleSpinBox
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView
+from PySide2.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 from PySide2.QtGui import QIcon, QKeySequence
-from PySide2.QtCore import Qt, Signal, Slot
+from PySide2.QtCore import Qt, Signal, Slot, QUrl
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 import pyperclip
+from . import core
 from . import storage
 
 
 class DDOSDialog(QDialog):
+    ddos_checked = Signal()
 
     def __init__(self):
         super().__init__()
@@ -53,7 +56,7 @@ class DDOSDialog(QDialog):
         self.setWindowIcon(QIcon('icon.png'))
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
         self.browser.setFocus()
-        self.resize(480, 600)
+        self.resize(480, 700)
 
     def zoom_in(self):
         self.zoom(True)
@@ -67,10 +70,23 @@ class DDOSDialog(QDialog):
         else:
             self.browser.setZoomFactor(self.browser.zoomFactor() - 0.25)
 
+    @Slot()
+    def show_ddos(self):
+        self.browser.load(QUrl(f'{core.SITE_URL}/404'))
+        ok = self.exec_()
+        if ok == QDialog.Accepted:
+            self.ddos_checked.emit()
+
 
 class ConfigDialog(QDialog):
-    def __init__(self):
+    dialog_closed = Signal(dict, dict)
+
+    def __init__(self, requester):
         super().__init__()
+        self.requester = requester
+        self.requester.pin_needed.connect(self.input_pin)
+        self.requester.umi_made.connect(self.write_umi)
+        self.requester.msg_passed.connect(self.error_msg)
         self.lbl_id = QLabel('계정명')
         self.lbl_id.setAlignment(Qt.AlignCenter)
         self.lbl_pw = QLabel('비밀번호')
@@ -81,6 +97,7 @@ class ConfigDialog(QDialog):
         self.lbl_ua.setAlignment(Qt.AlignCenter)
         self.lbl_delay = QLabel('저속 간격')
         self.lbl_delay.setAlignment(Qt.AlignCenter)
+        self.lbl_msg = QLabel('')
         self.line_id = QLineEdit()
         self.line_pw = QLineEdit()
         self.line_pw.setEchoMode(QLineEdit.PasswordEchoOnEdit)
@@ -95,26 +112,38 @@ class ConfigDialog(QDialog):
         self.btn_save.clicked.connect(self.save)
         self.btn_cancel = QPushButton('취소')
         self.btn_cancel.clicked.connect(self.reject)
+        self.btn_get_umi = QPushButton('로그인')
+        self.btn_get_umi.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+        self.btn_get_umi.clicked.connect(self.get_umi)
         grid = QGridLayout()
-        grid.addWidget(self.lbl_id, 0, 0, 1, 2)
-        grid.addWidget(self.line_id, 0, 2, 1, 6)
-        grid.addWidget(self.lbl_pw, 1, 0, 1, 2)
-        grid.addWidget(self.line_pw, 1, 2, 1, 6)
-        grid.addWidget(self.lbl_umi, 2, 0, 1, 2)
-        grid.addWidget(self.line_umi, 2, 2, 1, 6)
-        grid.addWidget(self.lbl_ua, 3, 0, 1, 2)
-        grid.addWidget(self.line_ua, 3, 2, 1, 6)
-        grid.addWidget(self.lbl_delay, 4, 0, 1, 2)
-        grid.addWidget(self.line_delay, 4, 2, 1, 6)
-        grid.addWidget(self.btn_save, 5, 4, 1, 2)
-        grid.addWidget(self.btn_cancel, 5, 6, 1, 2)
+        grid.addWidget(self.lbl_id, 0, 0, 1, 1)
+        grid.addWidget(self.line_id, 0, 1, 1, 6)
+        grid.addWidget(self.lbl_pw, 1, 0, 1, 1)
+        grid.addWidget(self.line_pw, 1, 1, 1, 6)
+        grid.addWidget(self.btn_get_umi, 0, 7, 2, 2)
+        grid.addWidget(self.lbl_umi, 2, 0, 1, 1)
+        grid.addWidget(self.line_umi, 2, 1, 1, 8)
+        grid.addWidget(self.lbl_ua, 3, 0, 1, 1)
+        grid.addWidget(self.line_ua, 3, 1, 1, 8)
+        grid.addWidget(self.lbl_delay, 4, 0, 1, 1)
+        grid.addWidget(self.line_delay, 4, 1, 1, 8)
+        grid.addWidget(self.lbl_msg, 5, 0, 1, 4)
+        grid.addWidget(self.btn_save, 5, 5, 1, 2)
+        grid.addWidget(self.btn_cancel, 5, 7, 1, 2)
         self.setLayout(grid)
         self.setWindowTitle('개인 정보')
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
-        self.resize(400, 160)
         self.c_login, self.c_work = {}, {}
+
+    @Slot(str)
+    def error_msg(self, t):
+        self.lbl_msg.setText(t)
+
+    def load(self, c_login, c_work):
+        self.c_login = c_login
+        self.c_work = c_work
 
     def show_config(self):
         self.line_id.setText(self.c_login['ID'])
@@ -124,15 +153,31 @@ class ConfigDialog(QDialog):
         self.line_ua.setCursorPosition(0)
         self.line_delay.setValue(float(self.c_work['DELAY']))
 
-    def load(self, c_login, c_work):
-        self.c_login = c_login
-        self.c_work = c_work
+        ok = self.exec_()
+        if ok == QDialog.Accepted:
+            self.dialog_closed.emit(self.c_login, self.c_work)
 
     def save(self):
         self.c_login = {'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
                         'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()}
         self.c_work = {'DELAY': self.line_delay.value()}
         self.accept()
+
+    def get_umi(self):
+        self.requester.init_login(self.line_id.text().strip(), self.line_pw.text().strip())
+
+    @Slot(str)
+    def write_umi(self, umi):
+        self.line_umi.setText(umi)
+
+    @Slot(str)
+    def input_pin(self, mail):
+        pin, ok = QInputDialog.getText(self, '로그인 PIN 입력',
+                                       f'이메일({mail})로 전송된 PIN을 입력해주세요.', QLineEdit.Normal)
+        if ok:
+            self.requester.typed_pin = pin
+        else:
+            self.requester.typed_pin = 'deny'
 
 
 class NameEditDialog(QDialog):
@@ -227,6 +272,7 @@ class TableEnhanced(QTableWidget):
         super().keyPressEvent(e)  # 오버라이드하면서 기본 메서드 재활용
         if e.key() == Qt.Key_Delete:  # 지우기
             self.rows_delete(self._rows_selected())
+            self.sig_main_label.emit('선택된 문서를 목록에서 제거하였습니다.')
             self.resizeColumnsToContents()
 
     def move_up(self):
