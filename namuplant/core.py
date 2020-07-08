@@ -30,22 +30,18 @@ class Requester(QObject):
     umi_made = Signal(str)
     msg_passed = Signal(str)
 
-    def __init__(self):  # 반복 필요 없는 것
+    def __init__(self, config):
         super().__init__()
+        self.config = config
         self.is_ddos_checked = False
         self.typed_pin = ''
         self.URL_LOGIN = f'{SITE_URL}/member/login'
         self.s = requests.Session()
         # self.login()
 
-    def load_config(self, c_login, c_work):
-        # config = storage.read_config('config.ini')
-        self.INFO = c_login
-        self.DELAY = float(c_work['DELAY'])
-
     def init_login(self, user, pw):
         self.s = requests.Session()
-        self.s.headers.update({'user-agent': self.INFO['UA']})
+        self.s.headers.update({'user-agent': self.config.c['login']['UA']})
         r, soup = self.request_d('post', self.URL_LOGIN, data={'username': user, 'password': pw})
         if 'umi' not in self.s.cookies:
             self.typed_pin = ''
@@ -58,8 +54,11 @@ class Requester(QObject):
                     if self.typed_pin == 'deny':
                         self.msg_passed.emit('PIN 입력이 취소되었습니다.')
                         break
+                    elif self.typed_pin == 'nothing':
+                        self.msg_passed.emit('PIN이 입력되지 않았습니다.')
                     _, soup = self.request_d('post', f'{self.URL_LOGIN}/pin', data={'pin': self.typed_pin, 'trust': 'on'})
                     if self.is_logged_in(soup) and 'umi' in self.s.cookies:
+                        self.msg_passed.emit('로그인 성공')
                         self.umi_made.emit(self.s.cookies['umi'])
                     break
                 else:
@@ -73,20 +72,21 @@ class Requester(QObject):
 
     def login(self):
         self.s = requests.Session()
-        self.s.headers.update({'user-agent': self.INFO['UA']})
-        self.s.cookies.set('umi', self.INFO['UMI'], domain=f'.{SITE_URL[8:]}')
+        self.s.headers.update({'user-agent': self.config.c['login']['UA']})
+        self.s.cookies.set('umi', self.config.c['login']['UMI'], domain=f'.{SITE_URL[8:]}')
         r, soup = self.request_d('post', self.URL_LOGIN,
-                                 data={'username': self.INFO['ID'], 'password': self.INFO['PW']})
+                                 data={'username': self.config.c['login']['ID'],
+                                       'password': self.config.c['login']['PW']})
         return self.is_logged_in(soup)
 
     @staticmethod
     def is_logged_in(soup):
         member = soup.select('nav > ul > li > div > div > div')
         if member[1].text == 'Member':
-            print(f'login SUCCESS {member[0].text}')
+            print(f'로그인 성공({member[0].text})')
             return True
         else:
-            print('login FAILURE')
+            print('로그인 실패')
             return False
 
     def request_d(self, method, url, **kwargs):  # 디도스 검사 리퀘스트
@@ -145,7 +145,7 @@ class ReqPost(ReqBasic):
             r, soup = self.requester.request_d('get', doc_url)
             baserev = soup.find(attrs={'name': 'baserev'})['value']
             identifier = soup.find(attrs={'name': 'identifier'})['value']
-            if identifier == f'm:{self.requester.INFO["ID"]}':  # 로그인 안 되어 있으면 로그인
+            if identifier == f'm:{self.requester.config.c["login"]["ID"]}':  # 로그인 안 되어 있으면 로그인
                 break
             else:
                 self.requester.login()
@@ -470,7 +470,7 @@ class Iterate(ReqPost):
                                              'index': edit_log_index, 'error': post_error})
                         if self.index_speed == 1:  # 저속 옵션
                             t2 = time.time()
-                            waiting = self.requester.DELAY - (t2 - t1)
+                            waiting = float(self.requester.config.c['work']['DELAY']) - (t2 - t1)
                             if waiting > 0:
                                 time.sleep(waiting)
                             t1 = time.time()
@@ -557,7 +557,7 @@ class Iterate(ReqPost):
             while True:
                 _, soup = self.requester.request_d(
                     'post', f'{SITE_URL}/revert/{doc_code}',
-                    data={'rev': rev, 'identifier': f'm:{self.requester.INFO["ID"]}','log': summary})
+                    data={'rev': rev, 'identifier': f'm:{self.requester.config.c["login"]["ID"]}', 'log': summary})
                 if soup.h1.text == '오류':
                     error_temp = soup.select('article > div')[0].text
                     if error_temp == 'reCAPTCHA 인증이 실패했습니다.':  # 로그인 확인용
@@ -573,7 +573,7 @@ class Iterate(ReqPost):
         doc_url = f'{SITE_URL}/Upload'
         if not summary:
             summary = f'파일 {file_dir[file_dir.rfind("/") + 1:]}을 올림'
-        multi_data = {'baserev': '0', 'identifier': f'm:{self.requester.INFO["ID"]}', 'document': doc_name,
+        multi_data = {'baserev': '0', 'identifier': f'm:{self.requester.config.c["login"]["ID"]}', 'document': doc_name,
                       'log': summary, 'text': text}
         try:
             with open(file_dir, 'rb') as f:
@@ -827,7 +827,7 @@ class ReqGet(ReqBasic):
                     f'<a href=\"{SITE_URL}/backlink/{doc_code}?namespace={namespace}\">{parse.unquote(namespace)}</a> '
                     f'가져오는 중... ( + {self.total} )<br>{parse.unquote(tail[5:-1])}')
                 _, soup = self.requester.request_d('get',
-                                                 f'{SITE_URL}/backlink/{doc_code}?{tail}namespace={namespace}&flag=0')
+                                                   f'{SITE_URL}/backlink/{doc_code}?{tail}namespace={namespace}&flag=0')
                 for v in soup.select('article > div > div > div > ul > li > a'):  # 표제어 목록
                     if not v.next_sibling[2:-1] == 'redirect':
                         yield v.get('href')[3:]
@@ -865,6 +865,8 @@ class ReqGet(ReqBasic):
                             f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서를 {self.total}개 가져왔습니다.')
                         return
                     else:
+                        self.label_shown.emit(
+                            f'{self.lnk_doc(doc_code, doc_name)}의 하위 {name} 가져오는 중... ( + {self.total} )')
                         _, new_soup = self.requester.request_d('get', f'{SITE_URL}/w/{doc_code}{tail}')
                         for v in new_soup.select('.cl')[i].select('ul > li > a'):
                             yield v.get('href')[3:]

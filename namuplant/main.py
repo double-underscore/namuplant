@@ -4,17 +4,21 @@ import time
 import psutil
 from urllib import parse
 import mouse
-from PySide2.QtWidgets import QMainWindow, QWidget, QDialog, QAction, QShortcut, QPushButton, QLabel, QLineEdit
-from PySide2.QtWidgets import QComboBox, QSpinBox, QTextEdit, QPlainTextEdit
-from PySide2.QtWidgets import QSplitter, QVBoxLayout, QHBoxLayout
-from PySide2.QtWidgets import QTabWidget, QTableWidget, QTableWidgetItem
-from PySide2.QtWidgets import QTextBrowser, QFrame, QSizePolicy, QHeaderView, QFileDialog, QInputDialog
+from PySide2.QtWidgets import QMainWindow, QWidget, QAction, QShortcut, QSizePolicy, QSplitter, QVBoxLayout, QHBoxLayout
+from PySide2.QtWidgets import QPushButton, QComboBox, QSpinBox, QLineEdit, QPlainTextEdit, QTextBrowser, QInputDialog
+from PySide2.QtWidgets import QLabel, QTabWidget, QTableWidgetItem, QHeaderView
 from PySide2.QtGui import QIcon, QKeySequence, QPixmap, QTextCursor, QTextDocument
-from PySide2.QtCore import Qt, QUrl, QThread, QObject, QSize, Signal, Slot
+from PySide2.QtCore import Qt, QUrl, QThread, QSize, Signal, Slot
 
 from . import core, sub, storage
 from .__init__ import __version__
 process = psutil.Process(os.getpid())
+
+try:
+    import ctypes
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f'namuplant.{__version__}')
+except ImportError:
+    pass
 
 
 class MainWindow(QMainWindow):
@@ -44,12 +48,13 @@ class MainWindow(QMainWindow):
         self.act_auto_ins.toggled.connect(self.action_auto_ins)
         act_config = QAction('개인정보', self)
         act_config.triggered.connect(self.action_config)
+        # 기타 메뉴
         act_memory = QAction('RAM', self)
         act_memory.triggered.connect(self.action_memory)
+        self.act_skip_diff = QAction('편집 비교 생략 ⛔', self)
+        self.act_skip_diff.setCheckable(True)
+        self.act_skip_diff.toggled.connect(self.action_skip_diff)
         # 실험 메뉴
-        self.act_skip_review = QAction('미리보기 스킵', self)
-        self.act_skip_review.setCheckable(True)
-        self.act_skip_review.toggled.connect(self.action_skip_review)
         act_test = QAction('test1', self)
         act_test.triggered.connect(self.action_test)
         act_test2 = QAction('test2', self)
@@ -63,39 +68,43 @@ class MainWindow(QMainWindow):
         menu_option = menu_bar.addMenu('설정')
         menu_option.addActions([self.act_on_top, self.act_auto_ins])
         menu_option.addSeparator()
-        menu_option.addActions([act_config, act_memory])
+        menu_option.addAction(act_config)
+        menu_etc = menu_bar.addMenu('기타')
+        menu_etc.addAction(act_memory)
+        menu_etc.addSeparator()
+        menu_etc.addAction(self.act_skip_diff)
         # menu_test = menu_bar.addMenu('테스트')
-        # menu_test.addAction(self.act_skip_review)
-        # menu_test.addSeparator()
         # menu_test.addActions([act_test, act_test2])
+        self.file_dialog = sub.FileDialog()
+        self.input_dialog = sub.InputDialog()
         # 메인 위젯 구동
-        self.main_widget = MainWidget()
+        self.config = Config('config.ini')
+        self.requester = core.Requester(self.config)
+        self.main_widget = MainWidget(self.requester, self.config)
         self.setCentralWidget(self.main_widget)
         # 데이터 준비
         self.read_list_csv('doc', 'doc_list.csv')
         self.read_list_csv('edit', 'edit_list.csv')
         # 기타 옵션
-        self.act_on_top.setChecked(int(self.main_widget.CONFIG['window']['ON_TOP']))
-        self.act_auto_ins.setChecked(int(self.main_widget.CONFIG['window']['AUTO_INS']))
+        self.act_on_top.setChecked(int(self.config.c['window']['ON_TOP']))
+        self.act_auto_ins.setChecked(int(self.config.c['window']['AUTO_INS']))
+        self.act_skip_diff.setChecked(int(self.config.c['window']['SKIP_DIFF']))
 
     def action_on_top(self, check):
         self.setWindowFlag(Qt.WindowStaysOnTopHint, check)
-        self.main_widget.CONFIG['window']['ON_TOP'] = int(check)
-        self.main_widget.save_config()
+        self.config.save(on_top=int(check))
         self.show()
 
     def action_auto_ins(self, check):
         self.main_widget.tab_macro.AUTO_INSERT = int(check)
-        self.main_widget.CONFIG['window']['AUTO_INS'] = int(check)
-        self.main_widget.save_config()
+        self.config.save(auto_ins=int(check))
 
-    def action_skip_review(self, check):
-        self.main_widget.tab_macro.SKIP_REVIEW = int(check)
-        self.main_widget.CONFIG['window']['SKIP_REVIEW'] = int(check)
-        self.main_widget.save_config()
+    def action_skip_diff(self, check):
+        self.main_widget.tab_macro.SKIP_DIFF = int(check)
+        self.config.save(skip_diff=int(check))
 
     def action_config(self):
-        self.main_widget.config_dialog.show_config()
+        self.main_widget.config_dialog.load()
 
     def action_name_edit(self):
         self.main_widget.show_name_edit_dialog()
@@ -126,7 +135,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.write_list_csv('doc', 'doc_list.csv')
         self.write_list_csv('edit', 'edit_list.csv')
-        self.main_widget.save_config()
+        self.config.save()
 
     def read_list_csv(self, mode_1: str, file_dir, index=None):
         t_m = self.main_widget.tab_macro
@@ -169,34 +178,37 @@ class MainWindow(QMainWindow):
 
     def load_list(self, mode):
         name = {'doc': '문서', 'edit': '편집사항'}[mode]
-        file_dir = QFileDialog.getOpenFileName(self, f'{name} 목록 불러오기', './', 'CSV 파일(*.csv)')[0]
+        file_dir = self.file_dialog.get_open_csv()
         if file_dir:
-            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 불러오는 중입니다.')
-            search, ok = QInputDialog.getText(self, '특정 로그 불러오기',
-                                              f'특정 {name} 로그를 불러오는 경우 검색할 내용을 입력해주세요.', QLineEdit.Normal)
+            self.main_widget.set_main_label(f'{file_dir[0]}\n{name} 목록을 불러오는 중입니다.')
+            search, ok = self.input_dialog.get_text('특정 로그 불러오기',
+                                                    f'특정 {name} 로그를 불러오는 경우 검색할 내용을 입력해주세요.')
             if ok:
                 try:
                     if search:
-                        self.read_list_csv(mode, file_dir, search)
+                        self.read_list_csv(mode, file_dir[0], search)
                     else:
-                        self.read_list_csv(mode, file_dir)
-                    self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 불러왔습니다.')
+                        self.read_list_csv(mode, file_dir[0])
+                    self.main_widget.set_main_label(f'{file_dir[0]}\n{name} 목록을 불러왔습니다.')
                 except KeyError:
                     self.main_widget.set_main_label('목록 유형이 잘못되었습니다.')
+            else:
+                self.main_widget.set_main_label('목록 불러오기가 취소되었습니다.')
 
     def save_list(self, mode):
         name = {'doc': '문서', 'edit': '편집사항'}[mode]
-        file_dir = QFileDialog.getSaveFileName(self, f'{name} 목록 저장하기', './', 'CSV 파일(*.csv)')[0]
+        file_dir = self.file_dialog.get_save_csv()
         if file_dir:
-            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 저장하는 중입니다.')
-            self.write_list_csv(mode, file_dir)
-            self.main_widget.set_main_label(f'{file_dir}\n{name} 목록을 저장했습니다.')
+            self.main_widget.set_main_label(f'{file_dir[0]}\n{name} 목록을 저장하는 중입니다.')
+            self.write_list_csv(mode, file_dir[0])
+            self.main_widget.set_main_label(f'{file_dir[0]}\n{name} 목록을 저장했습니다.')
 
 
 class MainWidget(QWidget):
-    def __init__(self):
+    def __init__(self, requester, config):
         super().__init__()
-        self.CONFIG = storage.read_config('config.ini')
+        self.requester = requester
+        self.config = config
         # label
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
@@ -207,19 +219,15 @@ class MainWidget(QWidget):
         self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         self.main_label.setOpenExternalLinks(True)
         #
-        self.tab_macro = TabMacro()
+        self.tab_macro = TabMacro(self.requester)
         self.tab_macro.sig_main_label.connect(self.set_main_label)
-        self.login_confirm()
         # dialogs
-        self.config_dialog = sub.ConfigDialog(self.tab_macro.requester)
-        self.config_dialog.load(self.CONFIG['login'], self.CONFIG['work'])
-        self.config_dialog.dialog_closed.connect(self.config_changed)
-
+        self.config_dialog = sub.ConfigDialog(self.requester, self.config)
+        self.config_dialog.config_changed.connect(self.login_confirm)
         self.ddos_dialog = sub.DDOSDialog()
-        self.tab_macro.requester.ddos_detected.connect(self.ddos_dialog.show_ddos)
-        self.ddos_dialog.ddos_checked.connect(self.tab_macro.requester.ddos_checked)
-        self.tab_macro.requester.timeout_detected.connect(self.timeout_text)
-
+        self.requester.ddos_detected.connect(self.ddos_dialog.show_ddos)
+        self.ddos_dialog.ddos_checked.connect(self.requester.ddos_checked)
+        self.requester.timeout_detected.connect(self.timeout_text)
         self.name_edit_dialog = sub.NameEditDialog()
         self.name_edit_dialog.sig_name_edit.connect(self.tab_macro.doc_board.table_doc.edit_file_name)
 
@@ -230,14 +238,10 @@ class MainWidget(QWidget):
         box_v.setStretchFactor(self.tab_macro, 25)
         box_v.setContentsMargins(5, 5, 5, 5)
         self.setLayout(box_v)
-
-    @Slot(str)
-    def set_main_label(self, t):
-        self.main_label.setText(t)
+        self.login_confirm()
 
     def login_confirm(self):
-        self.tab_macro.requester.load_config(self.CONFIG['login'], self.CONFIG['work'])
-        if self.tab_macro.requester.login():
+        if self.requester.login():
             self.tab_macro.setEnabled(True)
             self.set_main_label(f'namuplant {__version__}')
             # icon = QPixmap('icon.png')
@@ -247,11 +251,9 @@ class MainWidget(QWidget):
             self.set_main_label(
                 '주어진 정보로는 로그인 할 수 없습니다.\n메뉴의 \'설정-개인정보\'에서 로그인 정보를 입력하십시오.')
 
-    @Slot(dict, dict)
-    def config_changed(self, c_login, c_work):
-        self.CONFIG['login'], self.CONFIG['work'] = c_login, c_work
-        self.save_config()
-        self.login_confirm()
+    @Slot(str)
+    def set_main_label(self, t):
+        self.main_label.setText(t)
 
     def show_name_edit_dialog(self):
         self.name_edit_dialog.show()
@@ -260,16 +262,32 @@ class MainWidget(QWidget):
         self.set_main_label('timeout!!!')
         print('timeout')
 
-    def save_config(self):
-        storage.write_config('config.ini', self.CONFIG)
+
+class Config:
+    def __init__(self, filename):
+        self.filename = filename
+        self.c = storage.read_config(self.filename)
+
+    def save(self, login=None, delay=None, on_top=None, auto_ins=None, skip_diff=None):
+        if login is not None:
+            self.c['login'] = login
+        if delay is not None:
+            self.c['work']['DELAY'] = round(delay, 1)
+        if on_top is not None:
+            self.c['window']['ON_TOP'] = on_top
+        if auto_ins is not None:
+            self.c['window']['AUTO_INS'] = auto_ins
+        if skip_diff is not None:
+            self.c['window']['SKIP_DIFF'] = skip_diff
+        storage.write_config(self.filename, self.c)
 
 
 class TabMacro(QWidget):
     sig_main_label = Signal(str)
 
-    def __init__(self):
+    def __init__(self, requester):
         super().__init__()
-        self.requester = core.Requester()
+        self.requester = requester
         # define main widgets
         self.doc_board = DocBoard()
         self.tabs_viewer = TabViewers()
@@ -360,7 +378,7 @@ class TabMacro(QWidget):
         self.th_get.started.connect(self.req_get.work)
         # thread iterate
         self.th_iterate = QThread()
-        self.SKIP_REVIEW = 0
+        self.SKIP_DIFF = 0
         self.iterate_post.finished.connect(self.iterate_finish)
         self.iterate_post.label_shown.connect(self.str_to_main)
         self.iterate_post.sig_doc_remove.connect(self.doc_board.table_doc.removeRow)
@@ -433,6 +451,7 @@ class TabMacro(QWidget):
             self.btn_pause.setEnabled(True)
             self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
+
     @Slot()
     def get_finish(self):
         self.th_get.quit()
@@ -455,7 +474,7 @@ class TabMacro(QWidget):
         # self.iterate_post.doc_list = self.doc_board.table_doc.rows_text_copy_list()
         self.iterate_post.edit_dict = self.edit_editor.table_edit.edits_copy()
         self.iterate_post.index_speed = self.cmb_speed.currentIndex()
-        self.iterate_post.diff_done = 3 if self.SKIP_REVIEW else 1
+        self.iterate_post.diff_done = 3 if self.SKIP_DIFF else 1
         self.th_iterate.start()
 
     @Slot()
@@ -803,6 +822,7 @@ class DocBoard(QWidget):
         box_v.addWidget(self.table_doc)
         box_v.setContentsMargins(0, 0, 0, 0)
         self.setLayout(box_v)
+        self.file_dialog = sub.FileDialog()
 
     @Slot()
     def insert(self):
@@ -830,10 +850,10 @@ class DocBoard(QWidget):
     def insert_file(self):
         insert = self.table_doc.rows_text_insert(editable=[False, True, False])
         insert.send(None)
-        name_list = QFileDialog.getOpenFileNames(self, '이미지 열기', './',
-                                                 '이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')[0]
-        for n in name_list:
-            insert.send([f'${n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}', ''])
+        name_list = self.file_dialog.get_open_image()
+        if name_list:
+            for n in name_list:
+                insert.send([f'${n}', f'파일:{n[n.rfind("/") + 1:n.rfind(".")]}.{n[n.rfind(".") + 1:].lower()}', ''])
         self.table_doc.resizeColumnsToContents()
         self.table_doc.setCurrentCell(self.table_doc.rowCount() - 1, 1)
         self.table_doc.setFocus()
@@ -1401,10 +1421,10 @@ class EditEditor(QWidget):
         self.edit_input.setText(self.cmb_file_cat.itemText(i))
 
     def cmb_image(self):
-        source = self.requester.s.get(f'{core.SITE_URL}/Upload').text
-        lic = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', source)
+        source, _ = self.requester.request_d('get', f'{core.SITE_URL}/Upload')
+        lic = re.findall(r'\"title\":\"이미지 라이선스/(.*?)\"', source.text)
         lic.insert(0, lic.pop(-1))
-        cat = re.findall(r'\"title\":\"(파일/.*?)\"', source)
+        cat = re.findall(r'\"title\":\"(파일/.*?)\"', source.text)
         cat.remove('파일/미분류')
         cat.insert(0, '파일/미분류')
         return lic, cat

@@ -1,13 +1,44 @@
-from PySide2.QtWidgets import QDialog, QSizePolicy, QHBoxLayout, QVBoxLayout, QGridLayout, QShortcut
+from PySide2.QtWidgets import QDialog, QFileDialog, QSizePolicy, QHBoxLayout, QVBoxLayout, QGridLayout, QShortcut
 from PySide2.QtWidgets import QPushButton, QLabel, QLineEdit, QComboBox, QDoubleSpinBox
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView
-from PySide2.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 from PySide2.QtGui import QIcon, QKeySequence
 from PySide2.QtCore import Qt, Signal, Slot, QUrl
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 import pyperclip
 from . import core
-from . import storage
+
+
+class InputDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.label = QLabel()
+        self.label.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.input = QLineEdit()
+        self.input.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_ok = QPushButton('확인')
+        self.btn_ok.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_ok.clicked.connect(self.accept)
+        self.btn_cancel = QPushButton('취소')
+        self.btn_cancel.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_cancel.clicked.connect(self.reject)
+        grid = QGridLayout()
+        grid.addWidget(self.label, 0, 0, 1, 8)
+        grid.addWidget(self.input, 1, 0, 1, 8)
+        grid.addWidget(self.btn_ok, 2, 6, 1, 1)
+        grid.addWidget(self.btn_cancel, 2, 7, 1, 1)
+        self.setLayout(grid)
+        self.setWindowIcon(QIcon('icon.png'))
+        self.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+
+    def get_text(self, title, lbl):
+        self.setWindowTitle(title)
+        self.label.setText(lbl)
+        self.input.clear()
+        if self.exec_() == self.Accepted:
+            return self.input.text(), True
+        else:
+            return '', False
 
 
 class DDOSDialog(QDialog):
@@ -79,14 +110,15 @@ class DDOSDialog(QDialog):
 
 
 class ConfigDialog(QDialog):
-    dialog_closed = Signal(dict, dict)
+    config_changed = Signal()
 
-    def __init__(self, requester):
+    def __init__(self, requester, config):
         super().__init__()
         self.requester = requester
         self.requester.pin_needed.connect(self.input_pin)
         self.requester.umi_made.connect(self.write_umi)
         self.requester.msg_passed.connect(self.error_msg)
+        self.config = config
         self.lbl_id = QLabel('계정명')
         self.lbl_id.setAlignment(Qt.AlignCenter)
         self.lbl_pw = QLabel('비밀번호')
@@ -102,6 +134,7 @@ class ConfigDialog(QDialog):
         self.line_pw = QLineEdit()
         self.line_pw.setEchoMode(QLineEdit.PasswordEchoOnEdit)
         self.line_umi = QLineEdit()
+        self.line_umi.setPlaceholderText('로그인 시 자동 입력')
         self.line_ua = QLineEdit()
         self.line_delay = QDoubleSpinBox()
         self.line_delay.setMinimum(3)
@@ -131,7 +164,9 @@ class ConfigDialog(QDialog):
         grid.addWidget(self.btn_save, 5, 5, 1, 2)
         grid.addWidget(self.btn_cancel, 5, 7, 1, 2)
         self.setLayout(grid)
-        self.setWindowTitle('개인 정보')
+        self.input_dialog = InputDialog()
+        self.input_dialog.input.setInputMask('999999')
+        self.setWindowTitle('개인정보')
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
@@ -141,29 +176,28 @@ class ConfigDialog(QDialog):
     def error_msg(self, t):
         self.lbl_msg.setText(t)
 
-    def load(self, c_login, c_work):
-        self.c_login = c_login
-        self.c_work = c_work
-
-    def show_config(self):
-        self.line_id.setText(self.c_login['ID'])
-        self.line_pw.setText(self.c_login['PW'])
-        self.line_umi.setText(self.c_login['UMI'])
-        self.line_ua.setText(self.c_login['UA'])
+    def load(self):
+        self.line_id.setText(self.config.c['login']['ID'])
+        self.line_pw.setText(self.config.c['login']['PW'])
+        self.line_umi.setText(self.config.c['login']['UMI'])
+        self.line_ua.setText(self.config.c['login']['UA'])
         self.line_ua.setCursorPosition(0)
-        self.line_delay.setValue(float(self.c_work['DELAY']))
-
+        self.line_delay.setValue(float(self.config.c['work']['DELAY']))
         ok = self.exec_()
         if ok == QDialog.Accepted:
-            self.dialog_closed.emit(self.c_login, self.c_work)
+            self.config_changed.emit()
 
     def save(self):
-        self.c_login = {'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
-                        'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()}
-        self.c_work = {'DELAY': self.line_delay.value()}
+        self.config.save(
+            login={'ID': self.line_id.text().strip(), 'PW': self.line_pw.text().strip(),
+                   'UMI': self.line_umi.text().strip(), 'UA': self.line_ua.text().strip()},
+            delay=self.line_delay.value()
+        )
         self.accept()
 
     def get_umi(self):
+        self.lbl_msg.setText('로그인 시도...')
+        self.line_umi.clear()
         self.requester.init_login(self.line_id.text().strip(), self.line_pw.text().strip())
 
     @Slot(str)
@@ -172,10 +206,12 @@ class ConfigDialog(QDialog):
 
     @Slot(str)
     def input_pin(self, mail):
-        pin, ok = QInputDialog.getText(self, '로그인 PIN 입력',
-                                       f'이메일({mail})로 전송된 PIN을 입력해주세요.', QLineEdit.Normal)
+        pin, ok = self.input_dialog.get_text('로그인 PIN 입력', f'이메일({mail})로 전송된 PIN을 입력해주세요.')
         if ok:
-            self.requester.typed_pin = pin
+            if pin:
+                self.requester.typed_pin = pin
+            else:
+                self.requester.typed_pin = 'nothing'
         else:
             self.requester.typed_pin = 'deny'
 
@@ -205,7 +241,7 @@ class NameEditDialog(QDialog):
         box_h.setStretchFactor(self.cmb_option, 1)
         box_h.setStretchFactor(self.line_text, 4)
         box_h.setStretchFactor(self.btn_ok, 1)
-        box_h.setContentsMargins(3, 3, 3, 3)
+        # box_h.setContentsMargins(3, 3, 3, 3)
         self.setLayout(box_h)
         self.setWindowTitle('이미지 파일 표제어 일괄 변경')
         self.setWindowIcon(QIcon('icon.png'))
@@ -214,6 +250,35 @@ class NameEditDialog(QDialog):
 
     def emit_sig_name_edit(self):
         self.sig_name_edit.emit(self.line_text.text(), self.cmb_option.currentIndex())
+
+
+class FileDialog(QFileDialog):
+    def __init__(self):
+        super().__init__()
+
+    def get_open_image(self):
+        self.setAcceptMode(self.AcceptOpen)
+        self.setFileMode(self.ExistingFiles)
+        self.setNameFilter('이미지 파일(*.jpg *.png *.gif *.JPG *.PNG *.GIF)')
+        self.setWindowTitle('이미지 열기')
+        if self.exec_():
+            return self.selectedFiles()
+
+    def get_open_csv(self):
+        self.setAcceptMode(self.AcceptOpen)
+        self.setFileMode(self.ExistingFile)
+        self.setNameFilter('CSV 파일(*.csv)')
+        self.setWindowTitle('목록 불러오기')
+        if self.exec_():
+            return self.selectedFiles()
+
+    def get_save_csv(self):
+        self.setAcceptMode(self.AcceptSave)
+        self.setFileMode(self.AnyFile)
+        self.setNameFilter('CSV 파일(*.csv)')
+        self.setWindowTitle('목록 저장하기')
+        if self.exec_():
+            return self.selectedFiles()
 
 
 class LineEnhanced(QLineEdit):
