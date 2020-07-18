@@ -1,25 +1,26 @@
 from PySide2.QtWidgets import QDialog, QFileDialog, QSizePolicy, QHBoxLayout, QVBoxLayout, QGridLayout, QShortcut
-from PySide2.QtWidgets import QPushButton, QLabel, QLineEdit, QComboBox, QDoubleSpinBox
-from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView
-from PySide2.QtGui import QIcon, QKeySequence
-from PySide2.QtCore import Qt, Signal, Slot, QUrl
+from PySide2.QtWidgets import QPushButton, QLabel, QLineEdit, QTextEdit, QComboBox, QDoubleSpinBox, QCheckBox
+from PySide2.QtWidgets import QRadioButton, QButtonGroup
+from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView, QHeaderView
+from PySide2.QtGui import QIcon, QKeySequence, QFont
+from PySide2.QtCore import Qt, Signal, Slot, QUrl, QSize
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 import pyperclip
+import difflib
+import html
 from . import core
 
 
 class InputDialog(QDialog):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.label = QLabel()
         self.label.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.input = QLineEdit()
         self.input.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn_ok = QPushButton('확인')
-        self.btn_ok.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_ok = NPButton('확인', 10, self)
         self.btn_ok.clicked.connect(self.accept)
-        self.btn_cancel = QPushButton('취소')
-        self.btn_cancel.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_cancel = NPButton('취소', 10, self)
         self.btn_cancel.clicked.connect(self.reject)
         grid = QGridLayout()
         grid.addWidget(self.label, 0, 0, 1, 8)
@@ -29,7 +30,7 @@ class InputDialog(QDialog):
         self.setLayout(grid)
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
 
     def get_text(self, title, lbl):
         self.setWindowTitle(title)
@@ -56,26 +57,27 @@ class DDOSDialog(QDialog):
         self.browser.setStyleSheet('border: 1px solid gray;')
         # self.browser.loadStarted.connect(self.test)
         # self.browser.loadFinished.connect(self.test2)
-        self.btn_zoom_in = QPushButton('+')
-        self.btn_zoom_in.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_zoom_in = NPButton('+', 9, self)
+        self.btn_zoom_in.setMinimumWidth(30)
         self.btn_zoom_in.setMaximumWidth(50)
         self.btn_zoom_in.clicked.connect(self.zoom_in)
-        self.btn_zoom_out = QPushButton('-')
-        self.btn_zoom_out.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn_zoom_out = NPButton('-', 9, self)
+        self.btn_zoom_out.setMinimumWidth(30)
         self.btn_zoom_out.setMaximumWidth(50)
         self.btn_zoom_out.clicked.connect(self.zoom_out)
-        self.btn = QPushButton('완료')
-        self.btn.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.btn = NPButton('완료', 10, self)
+        self.btn.setMaximumWidth(200)
         self.btn.clicked.connect(self.accept)
         # self.btn.clicked.connect(self.test2)
         self.abc = False
         box_h = QHBoxLayout()
         box_h.addWidget(self.btn_zoom_in)
         box_h.addWidget(self.btn_zoom_out)
+        box_h.addStretch(4)
         box_h.addWidget(self.btn)
         box_h.setStretchFactor(self.btn_zoom_in, 1)
         box_h.setStretchFactor(self.btn_zoom_out, 1)
-        box_h.setStretchFactor(self.btn, 18)
+        box_h.setStretchFactor(self.btn, 4)
         box_v = QVBoxLayout()
         box_v.addWidget(self.label)
         box_v.addWidget(self.browser)
@@ -85,7 +87,7 @@ class DDOSDialog(QDialog):
         # self.setWindowModality(Qt.ApplicationModal)
         self.setWindowTitle('reCAPTCHA')
         self.setWindowIcon(QIcon('icon.png'))
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowMinimizeButtonHint)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.browser.setFocus()
         self.resize(480, 700)
 
@@ -112,8 +114,8 @@ class DDOSDialog(QDialog):
 class ConfigDialog(QDialog):
     config_changed = Signal()
 
-    def __init__(self, requester, config):
-        super().__init__()
+    def __init__(self, requester, config, parent=None):
+        super().__init__(parent)
         self.requester = requester
         self.requester.pin_needed.connect(self.input_pin)
         self.requester.umi_made.connect(self.write_umi)
@@ -141,11 +143,11 @@ class ConfigDialog(QDialog):
         self.line_delay.setDecimals(1)
         self.line_delay.setSuffix('초')
         self.line_delay.setSingleStep(0.1)
-        self.btn_save = QPushButton('저장')
+        self.btn_save = NPButton('저장', 10, self)
         self.btn_save.clicked.connect(self.save)
-        self.btn_cancel = QPushButton('취소')
+        self.btn_cancel = NPButton('취소', 10, self)
         self.btn_cancel.clicked.connect(self.reject)
-        self.btn_get_umi = QPushButton('로그인')
+        self.btn_get_umi = NPButton('로그인', 10, self)
         self.btn_get_umi.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
         self.btn_get_umi.clicked.connect(self.get_umi)
         grid = QGridLayout()
@@ -164,12 +166,12 @@ class ConfigDialog(QDialog):
         grid.addWidget(self.btn_save, 5, 5, 1, 2)
         grid.addWidget(self.btn_cancel, 5, 7, 1, 2)
         self.setLayout(grid)
-        self.input_dialog = InputDialog()
+        self.input_dialog = InputDialog(self)
         self.input_dialog.input.setInputMask('999999')
         self.setWindowTitle('개인정보')
         self.setWindowIcon(QIcon('icon.png'))
         self.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.c_login, self.c_work = {}, {}
 
     @Slot(str)
@@ -183,6 +185,7 @@ class ConfigDialog(QDialog):
         self.line_ua.setText(self.config.c['login']['UA'])
         self.line_ua.setCursorPosition(0)
         self.line_delay.setValue(float(self.config.c['work']['DELAY']))
+        self.lbl_msg.clear()
         ok = self.exec_()
         if ok == QDialog.Accepted:
             self.config_changed.emit()
@@ -198,6 +201,7 @@ class ConfigDialog(QDialog):
     def get_umi(self):
         self.lbl_msg.setText('로그인 시도...')
         self.line_umi.clear()
+        self.input_dialog.input.clear()
         self.requester.init_login(self.line_id.text().strip(), self.line_pw.text().strip())
 
     @Slot(str)
@@ -226,12 +230,9 @@ class NameEditDialog(QDialog):
         self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_option.setMinimumWidth(70)
         self.cmb_option.setMaximumWidth(100)
-        self.line_text = LineEnhanced()
+        self.line_text = NPLine()
         self.line_text.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn_ok = QPushButton('실행')
-        self.btn_ok.setStyleSheet('font: 10pt \'맑은 고딕\'')
-        self.btn_ok.setMinimumWidth(72)
-        self.btn_ok.setMaximumWidth(100)
+        self.btn_ok = NPButton('실행', 10, self)
         self.btn_ok.clicked.connect(self.emit_sig_name_edit)
 
         box_h = QHBoxLayout()
@@ -243,9 +244,9 @@ class NameEditDialog(QDialog):
         box_h.setStretchFactor(self.btn_ok, 1)
         # box_h.setContentsMargins(3, 3, 3, 3)
         self.setLayout(box_h)
-        self.setWindowTitle('이미지 파일 표제어 일괄 변경')
+        self.setWindowTitle('선택한 이미지 파일 표제어 일괄 변경')
         self.setWindowIcon(QIcon('icon.png'))
-        self.setWindowFlags(Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         # self.resize(300, 40)
 
     def emit_sig_name_edit(self):
@@ -281,11 +282,20 @@ class FileDialog(QFileDialog):
             return self.selectedFiles()
 
 
-class LineEnhanced(QLineEdit):
+class NPButton(QPushButton):
+    def __init__(self, label, size, parent=None):
+        super().__init__(parent)
+        self.setText(label)
+        self.setStyleSheet(f'font: {size}pt \'맑은 고딕\'')
+        self.setMinimumWidth(70)
+        self.setMaximumWidth(120)
+
+
+class NPLine(QLineEdit):
     focused = Signal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
     def focusInEvent(self, e):
         super().focusInEvent(e)
@@ -309,16 +319,14 @@ class LineEnhanced(QLineEdit):
             self.redo()
 
 
-class TableEnhanced(QTableWidget):
+class NPTable(QTableWidget):
     sig_main_label = Signal(str)
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.verticalHeader().setDefaultSectionSize(23)
-        self.horizontalHeader().setMinimumSectionSize(30)
-        self.verticalHeader().setSectionsClickable(False)
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.shortcuts()
 
     def shortcuts(self):
@@ -338,7 +346,7 @@ class TableEnhanced(QTableWidget):
         if e.key() == Qt.Key_Delete:  # 지우기
             self.rows_delete(self._rows_selected())
             self.sig_main_label.emit('선택된 문서를 목록에서 제거하였습니다.')
-            self.resizeColumnsToContents()
+            # self.resizeColumnsToContents()
 
     def move_up(self):
         sel = self._rows_selected()
@@ -456,3 +464,220 @@ class TableEnhanced(QTableWidget):
                 else:
                     t = f'{t}{i.text()}\t'
             pyperclip.copy(t[:-1])
+
+
+class NPTextEdit(QTextEdit):
+    sig_size = Signal(QSize)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # self.textChanged.connect(self.resize_editor)
+        self.document().documentLayout().documentSizeChanged.connect(self.resize_editor)
+
+    def resize_editor(self):
+        h = self.document().size().height()
+        margin = self.document().documentMargin()
+        self.setMinimumHeight(h + 2 * margin)
+        self.setMaximumHeight(h + 2 * margin)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.sig_size.emit(QSize(self.sizeHint().width(), self.maximumHeight()))
+
+
+class DiffTable(QTableWidget):
+    def __init__(self):
+        super().__init__()
+        self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.setColumnCount(4)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().setMinimumSectionSize(10)
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.a = ''
+        self.b = ''
+
+    @staticmethod
+    def _table_item(text='', center=True):
+        item = QTableWidgetItem(text)
+        item.setFlags(item.flags() ^ Qt.ItemIsEditable ^ Qt.ItemIsEnabled)
+        font = QFont()
+        if center:  # 행번호
+            item.setTextAlignment(Qt.AlignCenter)
+            font.setPointSize(7)
+            item.setFont(font)
+        else:
+            font.setPointSize(9)
+            item.setFont(font)
+        return item
+
+    @staticmethod
+    def _edit_item(text, color):
+        item = NPTextEdit(text)
+        item.setStyleSheet(f"""
+            QTextEdit{{
+                font: 9pt \'맑은 고딕\';
+                background-color: {color};
+                selection-background-color: cadetblue; 
+                selection-color: white;
+                border: 0;}}
+            QTextEdit:Focus{{
+                selection-background-color: darkcyan; 
+                selection-color: white;}}
+            """)
+        return item
+
+    def _insert_merged(self, al, bl):
+        if al:
+            row = self.rowCount()
+            self.insertRow(row)
+            self.setItem(row, 1, self._table_item('\n'.join(map(lambda x: x[0], al))))
+            self.setItem(row, 2, self._table_item())
+            self.setItem(row, 3, self._table_item())
+            self.setCellWidget(row, 3, self._edit_item('<br>'.join(map(lambda x: x[1], al)), '#ffeef0'))
+            self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
+            if not bl:
+                self.setItem(row, 0, self._table_item())
+                self.setCellWidget(row, 0, QCheckBox(checked=True))
+                self.cellWidget(row, 3).setReadOnly(True)
+        if bl:
+            row = self.rowCount()
+            self.insertRow(row)
+            self.setItem(row, 1, self._table_item())
+            self.setItem(row, 2, self._table_item('\n'.join(map(lambda x: x[0], bl))))
+            self.setItem(row, 3, self._table_item())
+            self.setCellWidget(row, 3, self._edit_item('<br>'.join(map(lambda x: x[1], bl)), '#e6ffed'))
+            self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
+            if not al:
+                self.setCellWidget(row, 0, QCheckBox(checked=True))
+        if al and bl:  # 변경 시 radio button 필요
+            group = QButtonGroup(self)
+            group.setExclusive(True)
+            ar = QRadioButton()
+            br = QRadioButton(checked=True)
+            group.addButton(ar)
+            group.addButton(br)
+            self.setCellWidget(self.rowCount() - 2, 0, ar)
+            self.setCellWidget(self.rowCount() - 1, 0, br)
+
+    def _make_table(self, a, b):
+        def style_a(t):
+            return html.escape(t).replace(' ', '&nbsp;')\
+                    .replace('\x00-', '<span style="background-color:#ffaaaa">') \
+                    .replace('\x00^', '<span style="background-color:#ffaaaa">') \
+                    .replace('\x01', '</span>')
+
+        def style_b(t):
+            return html.escape(t).replace(' ', '&nbsp;')\
+                    .replace('\x00+', '<span style="background-color:#aaffaa">') \
+                    .replace('\x00^', '<span style="background-color:#aaffaa">') \
+                    .replace('\x01', '</span>')
+        self.setRowCount(0)
+        al, bl = [], []
+        bn = 1
+        for ar, br, flag in difflib._mdiff(a.splitlines(keepends=False), b.splitlines(keepends=False), context=2):
+            if flag is None:
+                self.insertRow(self.rowCount())
+                self.setItem(self.rowCount() - 1, 0, self._table_item())
+                self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
+                self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
+                self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
+            else:
+                an, at = ar
+                bn, bt = br
+                if flag:
+                    if type(an) is int:
+                        al.append([str(an), style_a(at)])
+                    if type(bn) is int:
+                        bl.append([str(bn), style_b(bt)])
+                else:
+                    self._insert_merged(al, bl)
+                    al, bl = [], []
+                    self.insertRow(self.rowCount())
+                    self.setItem(self.rowCount() - 1, 0, self._table_item())
+                    self.setItem(self.rowCount() - 1, 1, self._table_item(str(an)))
+                    self.setItem(self.rowCount() - 1, 2, self._table_item(str(bn)))
+                    self.setItem(self.rowCount() - 1, 3, self._table_item(at, center=False))
+        self._insert_merged(al, bl)
+        if self.rowCount() == 0:
+            self.insertRow(0)
+            self.setItem(0, 3, self._table_item('변경 사항이 없습니다.', False))
+        elif type(bn) is int and bn < len(b.splitlines(keepends=False)):
+            self.insertRow(self.rowCount())
+            self.setItem(self.rowCount() - 1, 0, self._table_item())
+            self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
+            self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
+            self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
+
+    def _retrieve(self):
+        i = 0
+        n = self.rowCount()
+        lines = []
+        while i < n:
+            widget_a = self.cellWidget(i, 0)
+            if type(widget_a) is QRadioButton:
+                widget_b = self.cellWidget(i + 1, 0)
+                if type(widget_b) is QRadioButton:
+                    b_num = self.item(i + 1, 2).text()
+                    if '\n' in b_num:
+                        lines.append((int(b_num[:b_num.find('\n')]), int(b_num[b_num.rfind('\n') + 1:]), 0,
+                                      self.cellWidget(i + int(widget_b.isChecked()), 3).toPlainText()))
+                    else:
+                        lines.append((int(b_num), int(b_num), 0,
+                                      self.cellWidget(i + int(widget_b.isChecked()), 3).toPlainText()))
+                    i += 1
+            elif type(widget_a) is QCheckBox:
+                text = self.cellWidget(i, 3).toPlainText()
+                if self.item(i, 1).text():  # 삭제
+                    if not widget_a.isChecked():
+                        if n == 1:  # 완전 삭제
+                            lines.append((1, None, 1, text))
+                        elif i == n - 1:  # 마지막
+                            b_num = self.item(i - 1, 2).text()
+                            lines.append((int(b_num) + 1, None, 1, text))
+                        else:
+                            b_num = self.item(i + 1, 2).text()
+                            lines.append((int(b_num), None, 1, text))
+                elif self.item(i, 2).text():  # 추가
+                    mode = 0 if widget_a.isChecked() else -1
+                    b_num = self.item(i, 2).text()
+                    if '\n' in b_num:
+                        lines.append((int(b_num[:b_num.find('\n')]), int(b_num[b_num.rfind('\n') + 1:]), mode, text))
+                    else:
+                        lines.append((int(b_num), int(b_num), mode, text))
+            i += 1
+        return lines
+
+    @staticmethod
+    def _assemble(b, ln_list):
+        bs = b.splitlines(keepends=False)
+        n = 0
+        for s, e, m, t in ln_list:
+            if m == 0:  # 일반적인 RadioButton
+                del bs[s - 1 - n:e - n]
+                bs.insert(s - 1 - n, t)
+                n += e - s
+            elif m == 1:
+                bs.insert(s - 1 - n, t)
+                n -= 1
+            elif m == -1:
+                del bs[s - 1 - n:e - n]
+                n += e - s + 1
+        return '\n'.join(bs)
+
+    def make_diff(self, a: str = None, b: str = None):
+        if a is not None:
+            self.a = a
+        if b is not None:
+            self.b = b
+        self._make_table(self.a, self.b)
+
+    def refresh_diff(self):
+        self.make_diff(b=self.current_text())
+
+    def current_text(self):
+        return self._assemble(self.b, self._retrieve())

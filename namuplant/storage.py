@@ -53,3 +53,22 @@ def read_csv(file_name):
         reader = csv.DictReader(csv_file)
         for row in reader:
             yield dict(row)
+
+
+class Config:
+    def __init__(self, filename):
+        self.filename = filename
+        self.c = read_config(self.filename)
+
+    def save(self, login=None, delay=None, on_top=None, auto_ins=None, skip_diff=None):
+        if login is not None:
+            self.c['login'] = login
+        if delay is not None:
+            self.c['work']['DELAY'] = round(delay, 1)
+        if on_top is not None:
+            self.c['window']['ON_TOP'] = on_top
+        if auto_ins is not None:
+            self.c['window']['AUTO_INS'] = auto_ins
+        if skip_diff is not None:
+            self.c['window']['SKIP_DIFF'] = skip_diff
+        write_config(self.filename, self.c)
