@@ -250,7 +250,8 @@ class MainWidget(QWidget):
     def login_confirm(self):
         if self.requester.login():
             self.sub_widget.setEnabled(True)
-            self.set_main_label(f'namuplant {__version__}')
+            self.set_main_label(
+                f'namuplant {__version__}<br>by <a href="https://github.com/double-underscore">double-underscore</a>')
             # icon = QPixmap('icon.png')
             # self.main_label.setPixmap(icon.scaled(50, 50, Qt.KeepAspectRatio))
         else:
@@ -510,7 +511,7 @@ class SubWidget(QWidget):
         # self.tabs_viewer.close_diff_micro('exit')
         if self.micro_post.editable_mode:
             time.sleep(0.01)
-            self.micro_view(code)
+            self.micro_view(self.micro_post.row_from, code)
 
     @Slot(bool)
     def micro_enable_iterate(self, b):
@@ -831,11 +832,11 @@ class DocViewer(QWidget):
         self.btn_close.setEnabled(False)
         box_tab_view = QHBoxLayout()
         box_tab_view.addWidget(self.cmb_info)
-        box_tab_view.addWidget(self.btn_close)
         box_tab_view.addWidget(self.btn_edit)
+        box_tab_view.addWidget(self.btn_close)
         box_tab_view.setStretchFactor(self.cmb_info, 5)
-        box_tab_view.setStretchFactor(self.btn_close, 1)
         box_tab_view.setStretchFactor(self.btn_edit, 1)
+        box_tab_view.setStretchFactor(self.btn_close, 1)
         box_tab_view.setContentsMargins(0, 0, 0, 0)
         self.tab_view.setLayout(box_tab_view)
         # tab edit
@@ -851,8 +852,8 @@ class DocViewer(QWidget):
         box_tab_edit.addWidget(self.spin)
         box_tab_edit.addWidget(self.btn_apply)
         box_tab_edit.addStretch(3)
-        box_tab_edit.addWidget(self.btn_cancel)
         box_tab_edit.addWidget(self.btn_post)
+        box_tab_edit.addWidget(self.btn_cancel)
         box_tab_edit.setStretchFactor(self.spin, 1)
         box_tab_edit.setStretchFactor(self.btn_apply, 1)
         box_tab_edit.setStretchFactor(self.btn_cancel, 1)
@@ -984,7 +985,7 @@ class DiffViewer(QWidget):
         self.btn_yes = sub.NPButton('실행', 9, self)
         self.btn_no = sub.NPButton('건너뛰기', 9, self)
         self.btn_yes_group = sub.NPButton('그룹 실행', 9, self)
-        self.btn_yes_whole = sub.NPButton('전체 실행', 9, self)
+        self.btn_yes_whole = sub.NPButton('모두 실행', 9, self)
         self.btn_quit = sub.NPButton('중단', 9, self)
         self.btn_refresh_micro = sub.NPButton('새로고침', 9, self)
         self.btn_yes_micro = sub.NPButton('실행', 9, self)

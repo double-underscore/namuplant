@@ -1,7 +1,7 @@
 # namuplant
 ![icon](/namuplant/icon.png)
 
-A bot for namu.wiki
+A GUI bot for namu.wiki
 
 by [double-underscore](https://github.com/double-underscore)
 
@@ -27,7 +27,7 @@ by [double-underscore](https://github.com/double-underscore)
 	    * `config.ini` 파일에 저장되므로 개인정보 유출 조심할 것.
 	    * `로그인` 클릭 - 이메일로 발송된 PIN 입력 - umi 쿠키 자동 입력.
     3. User-Agents 입력  
-	    * 기본적으로 입력되어 있으나, [관련 사이트](https://developers.whatismybrowser.com/useragents/parse/?analyse-my-user-agent=yes)에서 복사하여 입력 가능.
+	    * 기본적으로 입력되어 있음. 만약 바꾸고 싶다면 [관련 사이트](https://developers.whatismybrowser.com/useragents/parse/?analyse-my-user-agent=yes)에서 복사하여 입력. 입력하지 않으면 오류 발생.
 	4. `저장`
 
 ## 사용법
@@ -59,8 +59,12 @@ by [double-underscore](https://github.com/double-underscore)
 4. `시작`
     * 비교
         * 실행 시 변경 사항 비교창에서 편집 지시사항이 제대로 작성되었는지 확인.
-        * 변경 사항을 나타내는 셀은 편집이 가능하며, 선택된 옵션 단추에 있는 내용대로 최종적 편집이 진행됨. 새로고침으로 확인 필수.
+        * 변경 사항을 나타내는 셀은 일부 편집이 가능하며, 선택된 옵션 단추에 있는 내용대로 편집이 진행됨. 새로고침으로 확인 필수.
         * 체크 박스가 있는 셀은 선택 해제시 반영되지 않음.
+        * `실행`: 현재 문서에 편집 사항 적용
+        * `건너뛰기`: 현재 문서에 편집 사항 미적용
+        * `그룹 실행`: 편집 지시자가 같은 다른 문서에서 비교창을 띄우지 않고 즉시 편집 사항 적용
+        * `모두 실행`: 문서 목록에 있는 모든 다른 문서에서 비교창을 띄우지 않고 즉시 편집 사항 적용
         
 ## 유의사항
 * 마우스 우클릭을 통한 문서 입력은 크롬 브라우저에서만 가능.
