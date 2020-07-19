@@ -605,6 +605,7 @@ class Iterate(ReqPost):
 
 class Micro(ReqPost):
     # sig_do_edit = Signal(str)
+    sig_doc_error = Signal(int, str)
     sig_text_view = Signal(str, str, bool)
     sig_image_view = Signal(str)
     sig_start_text_edit = Signal(str)
@@ -614,6 +615,7 @@ class Micro(ReqPost):
 
     def __init__(self, requester):
         super().__init__(requester)
+        self.row_from = 0
         self.doc_code = ''
         self.text = ''
         self.new_before = ''
@@ -687,6 +689,8 @@ class Micro(ReqPost):
                             error = self.post(self.doc_code, self.text, baserev, identifier)
                         else:
                             error = '문서에 내용이 없어 취소되었습니다.'
+                        if error:
+                            self.sig_doc_error.emit(self.row_from, error)
                         doc_logger.send({'code': self.doc_code, 'title': doc_name, 'rev': f'r{baserev}',
                                          'time': self.time_doc_log(), 'index': '', 'error': error})
                         doc_logger.close()

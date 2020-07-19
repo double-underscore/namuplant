@@ -2,7 +2,7 @@ from PySide2.QtWidgets import QDialog, QFileDialog, QSizePolicy, QHBoxLayout, QV
 from PySide2.QtWidgets import QPushButton, QLabel, QLineEdit, QTextEdit, QComboBox, QDoubleSpinBox, QCheckBox
 from PySide2.QtWidgets import QRadioButton, QButtonGroup
 from PySide2.QtWidgets import QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView, QHeaderView
-from PySide2.QtGui import QIcon, QKeySequence, QFont
+from PySide2.QtGui import QIcon, QKeySequence, QFont, QTextCursor, QTextCharFormat, QColor
 from PySide2.QtCore import Qt, Signal, Slot, QUrl, QSize
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 import pyperclip
@@ -469,12 +469,24 @@ class NPTable(QTableWidget):
 class NPTextEdit(QTextEdit):
     sig_size = Signal(QSize)
 
-    def __init__(self, parent=None):
+    def __init__(self, bg_color='white', parent=None):
         super().__init__(parent)
+        self.setAcceptRichText(False)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # self.textChanged.connect(self.resize_editor)
         self.document().documentLayout().documentSizeChanged.connect(self.resize_editor)
+        self.setStyleSheet(f"""
+            QTextEdit{{
+                font: 9pt \'맑은 고딕\';
+                background-color: {bg_color};
+                selection-background-color: cadetblue; 
+                selection-color: white;
+                border: 0;}}
+            QTextEdit:Focus{{
+                selection-background-color: darkcyan; 
+                selection-color: white;}}
+            """)
 
     def resize_editor(self):
         h = self.document().size().height()
@@ -498,8 +510,55 @@ class DiffTable(QTableWidget):
         self.horizontalHeader().setMinimumSectionSize(10)
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        color_a = QColor()
+        color_a.setNamedColor('#ffaaaa')
+        color_b = QColor()
+        color_b.setNamedColor('#aaffaa')
+        self.fmt_a = QTextCharFormat()
+        self.fmt_a.setBackground(color_a)
+        self.fmt_b = QTextCharFormat()
+        self.fmt_b.setBackground(color_b)
         self.a = ''
         self.b = ''
+
+    def _make_table(self, a, b):
+        self.setRowCount(0)
+        al, bl = [], []
+        bn = 1
+        for ar, br, flag in difflib._mdiff(a.splitlines(keepends=True), b.splitlines(keepends=True), context=2):
+            if flag is None:
+                self.insertRow(self.rowCount())
+                self.setItem(self.rowCount() - 1, 0, self._table_item())
+                self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
+                self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
+                self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
+            else:
+                an, at = ar
+                bn, bt = br
+                if flag:
+                    if type(an) is int:
+                        al.append([str(an), at])
+                    if type(bn) is int:
+                        bl.append([str(bn), bt])
+                else:
+                    self._insert_merged(al, bl)  # flag가 True일 때 모아둔 al, bl을 표에 실제 입력
+                    al, bl = [], []
+                    self.insertRow(self.rowCount())
+                    self.setItem(self.rowCount() - 1, 0, self._table_item())
+                    self.setItem(self.rowCount() - 1, 1, self._table_item(str(an)))
+                    self.setItem(self.rowCount() - 1, 2, self._table_item(str(bn)))
+                    self.setItem(self.rowCount() - 1, 3,
+                                 self._table_item((lambda x: x[:-1] if x.endswith('\n') else x)(at), center=False))
+        self._insert_merged(al, bl)
+        if self.rowCount() == 0:
+            self.insertRow(0)
+            self.setItem(0, 3, self._table_item('변경 사항이 없습니다.', False))
+        elif type(bn) is int and bn < len(b.splitlines()):  # 맨 마지막에 생략 표시가 자동으로 안 됨
+            self.insertRow(self.rowCount())
+            self.setItem(self.rowCount() - 1, 0, self._table_item())
+            self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
+            self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
+            self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
 
     @staticmethod
     def _table_item(text='', center=True):
@@ -515,22 +574,6 @@ class DiffTable(QTableWidget):
             item.setFont(font)
         return item
 
-    @staticmethod
-    def _edit_item(text, color):
-        item = NPTextEdit(text)
-        item.setStyleSheet(f"""
-            QTextEdit{{
-                font: 9pt \'맑은 고딕\';
-                background-color: {color};
-                selection-background-color: cadetblue; 
-                selection-color: white;
-                border: 0;}}
-            QTextEdit:Focus{{
-                selection-background-color: darkcyan; 
-                selection-color: white;}}
-            """)
-        return item
-
     def _insert_merged(self, al, bl):
         if al:
             row = self.rowCount()
@@ -538,7 +581,8 @@ class DiffTable(QTableWidget):
             self.setItem(row, 1, self._table_item('\n'.join(map(lambda x: x[0], al))))
             self.setItem(row, 2, self._table_item())
             self.setItem(row, 3, self._table_item())
-            self.setCellWidget(row, 3, self._edit_item('<br>'.join(map(lambda x: x[1], al)), '#ffeef0'))
+            self.setCellWidget(row, 3, NPTextEdit('#ffeef0'))
+            self._highlight(self.cellWidget(row, 3), ''.join(map(lambda x: x[1], al)), self.fmt_a)
             self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
             if not bl:
                 self.setItem(row, 0, self._table_item())
@@ -550,7 +594,8 @@ class DiffTable(QTableWidget):
             self.setItem(row, 1, self._table_item())
             self.setItem(row, 2, self._table_item('\n'.join(map(lambda x: x[0], bl))))
             self.setItem(row, 3, self._table_item())
-            self.setCellWidget(row, 3, self._edit_item('<br>'.join(map(lambda x: x[1], bl)), '#e6ffed'))
+            self.setCellWidget(row, 3, NPTextEdit('#e6ffed'))
+            self._highlight(self.cellWidget(row, 3), ''.join(map(lambda x: x[1], bl)), self.fmt_b)
             self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
             if not al:
                 self.setCellWidget(row, 0, QCheckBox(checked=True))
@@ -564,54 +609,34 @@ class DiffTable(QTableWidget):
             self.setCellWidget(self.rowCount() - 2, 0, ar)
             self.setCellWidget(self.rowCount() - 1, 0, br)
 
-    def _make_table(self, a, b):
-        def style_a(t):
-            return html.escape(t).replace(' ', '&nbsp;')\
-                    .replace('\x00-', '<span style="background-color:#ffaaaa">') \
-                    .replace('\x00^', '<span style="background-color:#ffaaaa">') \
-                    .replace('\x01', '</span>')
-
-        def style_b(t):
-            return html.escape(t).replace(' ', '&nbsp;')\
-                    .replace('\x00+', '<span style="background-color:#aaffaa">') \
-                    .replace('\x00^', '<span style="background-color:#aaffaa">') \
-                    .replace('\x01', '</span>')
-        self.setRowCount(0)
-        al, bl = [], []
-        bn = 1
-        for ar, br, flag in difflib._mdiff(a.splitlines(keepends=False), b.splitlines(keepends=False), context=2):
-            if flag is None:
-                self.insertRow(self.rowCount())
-                self.setItem(self.rowCount() - 1, 0, self._table_item())
-                self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
-                self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
-                self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
-            else:
-                an, at = ar
-                bn, bt = br
-                if flag:
-                    if type(an) is int:
-                        al.append([str(an), style_a(at)])
-                    if type(bn) is int:
-                        bl.append([str(bn), style_b(bt)])
+    @staticmethod
+    def _highlight(editor: QTextEdit, text: str, fmt: QTextCharFormat):
+        def get_pos_list(t):
+            s, e, m, lst = 0, 0, 0, []
+            while True:
+                s = t.find('\0', m)
+                e = t.find('\1', m)
+                if s == -1:
+                    break
                 else:
-                    self._insert_merged(al, bl)
-                    al, bl = [], []
-                    self.insertRow(self.rowCount())
-                    self.setItem(self.rowCount() - 1, 0, self._table_item())
-                    self.setItem(self.rowCount() - 1, 1, self._table_item(str(an)))
-                    self.setItem(self.rowCount() - 1, 2, self._table_item(str(bn)))
-                    self.setItem(self.rowCount() - 1, 3, self._table_item(at, center=False))
-        self._insert_merged(al, bl)
-        if self.rowCount() == 0:
-            self.insertRow(0)
-            self.setItem(0, 3, self._table_item('변경 사항이 없습니다.', False))
-        elif type(bn) is int and bn < len(b.splitlines(keepends=False)):
-            self.insertRow(self.rowCount())
-            self.setItem(self.rowCount() - 1, 0, self._table_item())
-            self.setItem(self.rowCount() - 1, 1, self._table_item('...'))
-            self.setItem(self.rowCount() - 1, 2, self._table_item('...'))
-            self.setItem(self.rowCount() - 1, 3, self._table_item('(생략)', center=False))
+                    lst.append((s, e))
+                    m = e + 1
+            return lst
+        cursor = QTextCursor(editor.textCursor())
+        if text.endswith('\n'):
+            text = text[:-1]
+        elif text.endswith('\n\1'):
+            text = text[:-2] + '\1'
+        pos_list = get_pos_list(text)
+        text = text.replace('\0+', '').replace('\0-', '').replace('\0^', '').replace('\1', '')
+        editor.setText(text)
+        n = 0
+        for start, end in pos_list:
+            if not end == start + 2:
+                cursor.setPosition(start - n)
+                cursor.setPosition(end - n - 2, QTextCursor.KeepAnchor)
+                cursor.mergeCharFormat(fmt)
+            n += 3
 
     def _retrieve(self):
         i = 0
@@ -654,9 +679,10 @@ class DiffTable(QTableWidget):
 
     @staticmethod
     def _assemble(b, ln_list):
-        bs = b.splitlines(keepends=False)
+        bs = b.splitlines(keepends=True)
         n = 0
         for s, e, m, t in ln_list:
+            t = t + '\n'
             if m == 0:  # 일반적인 RadioButton
                 del bs[s - 1 - n:e - n]
                 bs.insert(s - 1 - n, t)
@@ -667,7 +693,8 @@ class DiffTable(QTableWidget):
             elif m == -1:
                 del bs[s - 1 - n:e - n]
                 n += e - s + 1
-        return '\n'.join(bs)
+        return ''.join(bs)
+        # return (lambda x: x[:-1] if x.endswith('\n') else x)(''.join(bs))
 
     def make_diff(self, a: str = None, b: str = None):
         if a is not None:

@@ -368,6 +368,7 @@ class SubWidget(QWidget):
         self.th_micro = QThread()
         self.micro_post.finished.connect(self.micro_finish)
         self.micro_post.label_shown.connect(self.str_to_main)
+        self.micro_post.sig_doc_error.connect(self.doc_board.table_doc.set_error)
         self.micro_post.sig_text_view.connect(self.tabs_viewer.doc_viewer.set_text_view)
         self.micro_post.sig_start_text_edit.connect(self.tabs_viewer.doc_viewer.set_text_edit)
         self.micro_post.sig_apply_text_edit.connect(self.tabs_viewer.doc_viewer.apply_text_edit)
@@ -468,9 +469,10 @@ class SubWidget(QWidget):
         if self.th_iterate.isRunning():
             self.iterate_post.index_speed = i
 
-    @Slot(str)
-    def micro_view(self, doc_code):  # micro의 시작
+    @Slot(int, str)
+    def micro_view(self, row, doc_code):  # micro의 시작
         if not self.th_micro.isRunning():
+            self.micro_post.row_from = row
             self.micro_post.doc_code = doc_code  # 여기서 doc_code 지정
             self.micro_post.editable_mode = False
             self.tabs_viewer.setCurrentWidget(self.tabs_viewer.doc_viewer)
@@ -516,7 +518,7 @@ class SubWidget(QWidget):
 
 
 class TableDoc(sub.NPTable):
-    sig_doc_viewer = Signal(str)
+    sig_doc_viewer = Signal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -576,7 +578,7 @@ class TableDoc(sub.NPTable):
 
     @Slot(int, int)
     def view_doc(self, row, _):
-        self.sig_doc_viewer.emit(self.item(row, 0).text())
+        self.sig_doc_viewer.emit(row, self.item(row, 0).text())
 
     @Slot(int, str)
     def set_error(self, row, text):
