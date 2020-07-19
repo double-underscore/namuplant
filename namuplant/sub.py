@@ -7,7 +7,6 @@ from PySide2.QtCore import Qt, Signal, Slot, QUrl, QSize
 from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile
 import pyperclip
 import difflib
-import html
 from . import core
 
 
@@ -510,14 +509,15 @@ class DiffTable(QTableWidget):
         self.horizontalHeader().setMinimumSectionSize(10)
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        color_a = QColor()
-        color_a.setNamedColor('#ffaaaa')
-        color_b = QColor()
-        color_b.setNamedColor('#aaffaa')
-        self.fmt_a = QTextCharFormat()
-        self.fmt_a.setBackground(color_a)
-        self.fmt_b = QTextCharFormat()
-        self.fmt_b.setBackground(color_b)
+        # 컬러 세트
+        color_sub = QColor()
+        color_sub.setNamedColor('#ffaaaa')
+        color_add = QColor()
+        color_add.setNamedColor('#aaffaa')
+        self.fmt_sub = QTextCharFormat()
+        self.fmt_sub.setBackground(color_sub)
+        self.fmt_add = QTextCharFormat()
+        self.fmt_add.setBackground(color_add)
         self.a = ''
         self.b = ''
 
@@ -563,15 +563,16 @@ class DiffTable(QTableWidget):
     @staticmethod
     def _table_item(text='', center=True):
         item = QTableWidgetItem(text)
-        item.setFlags(item.flags() ^ Qt.ItemIsEditable ^ Qt.ItemIsEnabled)
         font = QFont()
         if center:  # 행번호
             item.setTextAlignment(Qt.AlignCenter)
+            item.setFlags(Qt.NoItemFlags)
+            item.setFont(font)
             font.setPointSize(7)
-            item.setFont(font)
         else:
-            font.setPointSize(9)
+            item.setFlags(Qt.NoItemFlags)
             item.setFont(font)
+            font.setPointSize(9)
         return item
 
     def _insert_merged(self, al, bl):
@@ -581,9 +582,10 @@ class DiffTable(QTableWidget):
             self.setItem(row, 1, self._table_item('\n'.join(map(lambda x: x[0], al))))
             self.setItem(row, 2, self._table_item())
             self.setItem(row, 3, self._table_item())
-            self.setCellWidget(row, 3, NPTextEdit('#ffeef0'))
-            self._highlight(self.cellWidget(row, 3), ''.join(map(lambda x: x[1], al)), self.fmt_a)
-            self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
+            editor = NPTextEdit(bg_color='#ffeef0')
+            editor.sig_size.connect(self.item(row, 3).setSizeHint)
+            self._highlight(editor, ''.join(map(lambda x: x[1], al)), self.fmt_sub, self.fmt_sub)
+            self.setCellWidget(row, 3, editor)
             if not bl:
                 self.setItem(row, 0, self._table_item())
                 self.setCellWidget(row, 0, QCheckBox(checked=True))
@@ -594,9 +596,10 @@ class DiffTable(QTableWidget):
             self.setItem(row, 1, self._table_item())
             self.setItem(row, 2, self._table_item('\n'.join(map(lambda x: x[0], bl))))
             self.setItem(row, 3, self._table_item())
-            self.setCellWidget(row, 3, NPTextEdit('#e6ffed'))
-            self._highlight(self.cellWidget(row, 3), ''.join(map(lambda x: x[1], bl)), self.fmt_b)
-            self.cellWidget(row, 3).sig_size.connect(self.item(row, 3).setSizeHint)
+            editor = NPTextEdit(bg_color='#e6ffed')
+            editor.sig_size.connect(self.item(row, 3).setSizeHint)
+            self._highlight(editor, ''.join(map(lambda x: x[1], bl)), self.fmt_add, self.fmt_add)
+            self.setCellWidget(row, 3, editor)
             if not al:
                 self.setCellWidget(row, 0, QCheckBox(checked=True))
         if al and bl:  # 변경 시 radio button 필요
@@ -610,32 +613,36 @@ class DiffTable(QTableWidget):
             self.setCellWidget(self.rowCount() - 1, 0, br)
 
     @staticmethod
-    def _highlight(editor: QTextEdit, text: str, fmt: QTextCharFormat):
-        def get_pos_list(t):
-            s, e, m, lst = 0, 0, 0, []
-            while True:
-                s = t.find('\0', m)
-                e = t.find('\1', m)
-                if s == -1:
-                    break
-                else:
-                    lst.append((s, e))
-                    m = e + 1
-            return lst
+    def _get_pos_list(t: str):
+        start, end, n, lst = 0, 0, 0, []
+        while True:
+            start = t.find('\0', n)
+            end = t.find('\1', n)
+            if start == -1:
+                break
+            else:
+                lst.append((t[start + 1], start, end))
+                n = end + 1
+        return lst
+
+    def _highlight(self, editor: QTextEdit, text: str, fmt: QTextCharFormat, fmt_chg: QTextCharFormat):
         cursor = QTextCursor(editor.textCursor())
         if text.endswith('\n'):
             text = text[:-1]
         elif text.endswith('\n\1'):
             text = text[:-2] + '\1'
-        pos_list = get_pos_list(text)
+        pos_list = self._get_pos_list(text)
         text = text.replace('\0+', '').replace('\0-', '').replace('\0^', '').replace('\1', '')
-        editor.setText(text)
+        editor.setPlainText(text)
         n = 0
-        for start, end in pos_list:
+        for tag, start, end in pos_list:
             if not end == start + 2:
                 cursor.setPosition(start - n)
                 cursor.setPosition(end - n - 2, QTextCursor.KeepAnchor)
-                cursor.mergeCharFormat(fmt)
+                if tag == '^':
+                    cursor.mergeCharFormat(fmt_chg)
+                else:
+                    cursor.mergeCharFormat(fmt)
             n += 3
 
     def _retrieve(self):

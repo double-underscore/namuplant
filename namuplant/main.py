@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         # 파일 메뉴
         act_save_now = QAction('목록 빠른 저장', self)
         act_save_now.triggered.connect(self.action_save_now)
+        act_save_now.setShortcut(QKeySequence('Ctrl+S'))
         act_load_doc_list = QAction('문서 열기', self)
         act_load_doc_list.triggered.connect(self.action_load_doc_list)
         act_load_edit_list = QAction('편집사항 열기', self)
@@ -220,7 +221,12 @@ class MainWidget(QWidget):
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignCenter)
         self.main_label.setMinimumHeight(40)
-        self.main_label.setStyleSheet('font: 10pt \'맑은 고딕\'')
+        self.main_label.setStyleSheet("""
+            QLabel{
+                font: 10pt \'맑은 고딕\';
+                selection-background-color: darkcyan; 
+                selection-color: white;}
+        """)
         self.main_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.main_label.setWordWrap(True)
         self.main_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
