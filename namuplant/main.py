@@ -5,7 +5,7 @@ import psutil
 from urllib import parse
 import mouse
 from PySide2.QtWidgets import QMainWindow, QWidget, QAction, QShortcut, QSizePolicy, QSplitter, QVBoxLayout, QHBoxLayout
-from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QPlainTextEdit, QGridLayout
+from PySide2.QtWidgets import QComboBox, QSpinBox, QLineEdit, QPlainTextEdit, QGridLayout, QMessageBox
 from PySide2.QtWidgets import QLabel, QTabWidget, QTableWidgetItem, QHeaderView
 from PySide2.QtGui import QIcon, QKeySequence, QPixmap, QTextCursor, QTextDocument, QFont, QPainter
 from PySide2.QtCore import Qt, QThread, QSize, Signal, Slot
@@ -352,6 +352,7 @@ class SubWidget(QWidget):
         self.doc_board.doc_code_typed.connect(self.get_by_input)
         self.req_get.moveToThread(self.th_get)
         self.th_get.started.connect(self.req_get.work)
+        self.req_get.sig_invoke_msgbox.connect(self.get_msgbox)
         # thread iterate
         self.th_iterate = QThread()
         self.SKIP_DIFF = 0
@@ -395,7 +396,7 @@ class SubWidget(QWidget):
 
     @Slot(int)
     def btn_get_enable(self, i):
-        if i == 4:
+        if i == 5:  # 이미지 업로드시
             self.btn_get.setEnabled(False)
         else:
             self.btn_get.setEnabled(True)
@@ -430,6 +431,16 @@ class SubWidget(QWidget):
             self.req_get.option = self.doc_board.cmb_option.currentIndex()
             self.th_get.start()
 
+    @Slot(int, int)
+    def get_msgbox(self, num, page):
+        reply = QMessageBox.warning(self, '검색 결과 안내',
+                                    f'검색 결과는 총 {num}건({page}페이지)입니다. 페이지 수가 많으면 오랜 시간이 소요될 수 있습니다. 계속하시겠습니까?',
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            self.req_get.yesno = True
+        else:
+            self.req_get.yesno = False
+
     @Slot()
     def get_finish(self):
         self.th_get.quit()
@@ -440,7 +451,7 @@ class SubWidget(QWidget):
         self.btn_pause.setEnabled(False)
         self.btn_get.setEnabled(True)
         if self.AUTO_INSERT and self.req_get.total:
-            self.edit_editor.auto_add_edit(self.doc_board.cmb_option.currentText(), parse.unquote(self.req_get.code))
+            self.edit_editor.auto_add_edit(self.req_get.option, parse.unquote(self.req_get.code))
 
     @Slot()
     def iterate_start(self):
@@ -742,7 +753,7 @@ class DocBoard(QWidget):
                 color: white;}
             """)
         self.cmb_option = QComboBox(self)
-        self.cmb_option.addItems(['1개', '역링크', '분류:', '사용자:', '이미지'])
+        self.cmb_option.addItems(['1개', '역링크', '분류:', '사용자:', '검색', '이미지'])
         self.cmb_option.setStyleSheet('font: 10pt \'맑은 고딕\'')
         self.cmb_option.currentIndexChanged.connect(self.cmb_option_change)
         # self.name_input = QLineEdit()
@@ -776,12 +787,12 @@ class DocBoard(QWidget):
 
     @Slot()
     def invoke_insert_file(self):
-        if self.cmb_option.currentIndex() == 4:
+        if self.cmb_option.currentIndex() == 5:
             self.insert_file()
 
     @Slot(int)
     def cmb_option_change(self, i):
-        if i == 4:
+        if i == 5:
             self.name_input.setPlaceholderText('클릭하여 파일 불러오기')
         else:
             self.name_input.setPlaceholderText('입력하여 문서 추가')
@@ -1440,7 +1451,7 @@ class EditEditor(QWidget):
         if name.startswith('분류:'):
             name = name[3:]
         if name:
-            if option == '역링크' or option == '분류:':
+            if option == 1 or option == 2:
                 if self.table_edit.rowCount() == 0:
                     self.spin_1.setValue(1)
                 # else:
@@ -1449,9 +1460,9 @@ class EditEditor(QWidget):
                 self.cmb_main.setCurrentText('문서')
                 self.cmb_doc.setCurrentText('수정')
                 self.cmb_doc_do.setCurrentText('찾기')
-                if option == '역링크':
+                if option == 1:  # 역링크
                     self.cmb_doc_by.setCurrentText('링크')
-                elif option == '분류:':
+                elif option == 2:  # 분류
                     self.cmb_doc_by.setCurrentText('분류:')
                 self.add_to_edit(alt=name)
 

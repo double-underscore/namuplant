@@ -1,5 +1,6 @@
 import re
 import time
+from math import ceil
 from PySide2.QtCore import QObject, Slot, Signal
 import requests
 from bs4 import BeautifulSoup
@@ -717,6 +718,7 @@ class Micro(ReqPost):
 
 class ReqGet(ReqBasic):
     send_code_list = Signal(list)
+    sig_invoke_msgbox = Signal(int, int)
     finished = Signal()
 
     def __init__(self, requester, doc_insert):
@@ -727,12 +729,13 @@ class ReqGet(ReqBasic):
         self.code = ''
         self.doc_insert = doc_insert
         self.total = 0
+        self.yesno = None
 
     def work(self):
         if self.mode == 1:  # 클릭 얻기
             self.code = self.copy_url()
         self.doc_insert.send(None)
-        if self.code:  # 직접 입력은 외부에서 조달
+        if self.code:  # 직접 입력은 DocBoard.insert에서 quote되어 들어옴
             self.total = 0
             if self.option == 0:  # 1개
                 code = self.get_one(self.code)
@@ -758,7 +761,13 @@ class ReqGet(ReqBasic):
                             self.code = contrib.group(2)
                 for code in self.get_contrib(self.code):
                     self.doc_insert.send([code, parse.unquote(code), ''])
-            elif self.option == 4:  # 파일
+            elif self.option == 4:  # 검색
+                if self.mode == 1:
+                    self.label_shown.emit('검색 내역은 우클릭으로 추가할 수 없습니다.')
+                else:
+                    for code in self.get_search(self.code):
+                        self.doc_insert.send([code, parse.unquote(code), ''])
+            elif self.option == 5:  # 파일
                 if self.mode == 1:
                     self.label_shown.emit('이미지 파일은 우클릭으로 추가할 수 없습니다.')
         else:
@@ -878,6 +887,36 @@ class ReqGet(ReqBasic):
         else:
             self.label_shown.emit(f'{self.lnk_doc(doc_code, doc_name)}에 분류된 문서가 없습니다.')
 
+    def get_search(self, keyword):
+        search_url = f'{SITE_URL}/Search?q=%22{keyword}%22'
+        lnk_search = f'{parse.unquote(keyword)}의 <a href=\"{search_url}\">검색 결과</a>'
+        _, soup = self.requester.request_d('get', search_url)
+        num = int(re.search(r'전체 (.*?) 건', soup.select_one('article > div > div.s').text.strip()).group(1))
+        self.yesno = None
+        if num > 0:
+            self.sig_invoke_msgbox.emit(num, ceil(num / 20))
+            while self.yesno is None:
+                time.sleep(0.3)
+            if not self.yesno:
+                self.label_shown.emit('검색 작업이 중단되었습니다.')
+                return
+            else:
+                for i in range(1, ceil(num/20) + 1):
+                    if self.is_quit:
+                        self.label_shown.emit(f'정지 버튼을 눌러 중단되었습니다.<br>'
+                                              f'{lnk_search}를 {self.total}개 가져왔습니다.')
+                        return
+                    self.label_shown.emit(f'{lnk_search}를 가져오는 중... ( + {self.total} )')
+                    _, soup = self.requester.request_d('get', f'{search_url}&page={i}')
+                    for code in list(map(lambda x: x.get('href')[3:], soup.select('article > div > section > div > h4 > a'))):
+                        yield code
+                        self.total += 1
+        if self.total:
+            self.label_shown.emit(f'{lnk_search}를 {self.total}개 가져왔습니다.')
+        else:
+            self.label_shown.emit(f'{lnk_search}가 없습니다.')
+
+
     def get_contrib(self, user_name):
         tail = ''
         if re.match(r'^(?:25[0-5]|2[0-4]\d|[0-1]?\d{1,2})(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d{1,2})){3}$', user_name):
@@ -889,12 +928,10 @@ class ReqGet(ReqBasic):
                        f'<a href=\"{contrib_url}\">기여 목록</a>'
         while True:
             if self.is_quit:
-                self.label_shown.emit(
-                    f'정지 버튼을 눌러 중단되었습니다.<br>'
-                    f'{lnk_user}을 {self.total}개 가져왔습니다.')
+                self.label_shown.emit(f'정지 버튼을 눌러 중단되었습니다.<br>'
+                                      f'{lnk_user}을 {self.total}개 가져왔습니다.')
                 return
-            self.label_shown.emit(
-                f'{lnk_user}을 가져오는 중... ( + {self.total} )')
+            self.label_shown.emit(f'{lnk_user}을 가져오는 중... ( + {self.total} )')
             _, soup = self.requester.request_d('get', f'{contrib_url}{tail}')
             temp = set()
             for code in list(map(lambda x: x.get('href')[3:], soup.select('tr > td > a:nth-child(1)'))):
